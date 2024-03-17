@@ -7,33 +7,40 @@ def parseCommand (s: String) : Except String Command := do
   let j : Json <- Json.parse s
   Lean.fromJson? j
 
-def dispatchCommand (c : Command) : String :=
-  match c with
+def dispatch2 (s: String) : Except String String := do
+  let j : Json <- Json.parse s
+  let cmds : Json <- (j.getObjVal? "cmd")
+  let cmd : String <- cmds.getStr?
+  match cmd with
+    | "start" => do
+      let version : Json <- j.getObjVal? "version"
+      let v : Nat <- version.getNat?
+      if v == 1 then
+        pure "start"
+      else
+        throw "invalid version"
+    | "dialect" => do
+      pure "dialect"
+    | "stop" => throw "stop"
+    | _ => pure "unknown command"
+
+
+
+def dispatchCommand (c : Command) : String := Id.run do
+  let mut started : Bool := false
+  let j : Json <- match c with
   | { cmd := "start" } =>
-    let res : StartResponse := {
-      version := 1,
-      implementation := {
-        language := "lean",
-        name := "jsonschema-lean",
-        homepage := "https://github.com/CAIMEOX/json-schema-lean",
-        issues := "https://github.com/CAIMEOX/json-schema-lean/issues",
-        source := "https://github.com/CAIMEOX/json-schema-lean.git",
-        dialects := #[
-          "http://json-schema.org/draft-07/schema#",
-          "http://json-schema.org/draft-06/schema#",
-          "http://json-schema.org/draft-04/schema#"
-        ]
-      }
-    }
-    Lean.toJson res |> Json.compress
+    started := true
+    Lean.toJson meta
   | { cmd := "dialect", .. } =>
     let res : DialectResponse := { ok := true }
-    Lean.toJson res |> Json.compress
+    Lean.toJson res
   | { cmd := "stop" } => "stopping"
   | { cmd := "run" } => "todo"
   | { cmd := a } =>
     let e: ErrorResponse := { error := "unknown command:" ++ a }
-    Lean.toJson e |> Json.compress
+    Lean.toJson e
+  Json.compress j
 
 def dispatch (raw: String) : String :=
   let cmd : Except String Command := parseCommand raw.trim

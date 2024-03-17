@@ -28,3 +28,20 @@ structure DialectResponse where
 structure ErrorResponse where
   error: String
   deriving Lean.FromJson, Lean.ToJson
+
+
+def meta : StartResponse := {
+      version := 1,
+      implementation := {
+        language := "lean",
+        name := "jsonschema-lean",
+        homepage := "https://github.com/CAIMEOX/json-schema-lean",
+        issues := "https://github.com/CAIMEOX/json-schema-lean/issues",
+        source := "https://github.com/CAIMEOX/json-schema-lean.git",
+        dialects := #[
+          "http://json-schema.org/draft-07/schema#",
+          "http://json-schema.org/draft-06/schema#",
+          "http://json-schema.org/draft-04/schema#"
+        ]
+      }
+    }

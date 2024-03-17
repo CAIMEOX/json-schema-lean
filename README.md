@@ -18,6 +18,7 @@ bowtie run --dialect 7 -i localhost/lean-jsonschema:latest
 The project is (currently) divided into the following modules:
 - Main : Entry point of the project
 - Data : Basic type definitions for JSON data
+- Parse: Functions to parse JSON data into Lean data types
 - Validation: Functions to validate JSON data against a schema
 - Harness : Command reader and dispatcher, handles stdin and stdout
 
