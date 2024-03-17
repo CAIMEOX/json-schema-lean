@@ -2,58 +2,36 @@ import Harness.Data
 import Lean.Data.Json
 open Lean (Json)
 
-def parseCommand (s: String) : Except String Command := do
+-- Dispatches the command to the appropriate handler
+def dispatch (s: String) : Except String String := do
   let j : Json <- Json.parse s
-  Lean.fromJson? j
-
-def dispatch2 (s: String) : Except String String := do
-  let j : Json <- Json.parse s
-  let cmds : Json <- (j.getObjVal? "cmd")
-  let cmd : String <- cmds.getStr?
+  let cmd : String <- j.getObjVal? "cmd" >>= Json.getStr?
   match cmd with
-    | "start" => do
-      let version : Json <- j.getObjVal? "version"
-      let v : Nat <- version.getNat?
-      if v == 1 then
-        pure "start"
-      else
-        throw "invalid version"
-    | "dialect" => do
-      pure "dialect"
-    | "stop" => throw "stop"
-    | _ => pure "unknown command"
+    | "start" => Except.ok (Lean.toJson meta).compress
+    | "dialect" =>
+      let j : DialectResponse := { ok := true }
+      Except.ok (Lean.toJson j).compress
+    | "stop" => Except.ok "{}"
+    | "run" =>
+      let seq : Nat <- j.getObjVal? "seq" >>= Json.getNat?
+      let skipped : SkippedResponse := { seq := seq, skipped := true }
+      Except.ok (Lean.toJson skipped).compress
+    | a => Except.error ("unknown command:" ++ a)
 
-
-
-def dispatchCommand (c : Command) : String := Id.run do
-  let mut started : Bool := false
-  let j : Json <- match c with
-  | { cmd := "start" } =>
-    started := true
-    Lean.toJson meta
-  | { cmd := "dialect", .. } =>
-    let res : DialectResponse := { ok := true }
-    Lean.toJson res
-  | { cmd := "stop" } => "stopping"
-  | { cmd := "run" } => "todo"
-  | { cmd := a } =>
-    let e: ErrorResponse := { error := "unknown command:" ++ a }
-    Lean.toJson e
-  Json.compress j
-
-def dispatch (raw: String) : String :=
-  let cmd : Except String Command := parseCommand raw.trim
-  match cmd with
-    | Except.ok c => dispatchCommand c
-    | Except.error e => e
-
+-- Entry point of Harness
 partial def repl : IO Unit := do
   let stdin <- IO.getStdin
   let stdout <- IO.getStdout
+  let stderr <- IO.getStderr
   let h <- IO.FS.Stream.getLine stdin
   if h.trim == "" then
     pure ()
   else
-    IO.FS.Stream.putStrLn stdout (dispatch h)
-    IO.FS.Stream.flush stdout
+    match (dispatch h) with
+      | Except.ok s => do
+        IO.FS.Stream.putStrLn stdout s
+        IO.FS.Stream.flush stdout
+      | Except.error e => do
+        IO.FS.Stream.putStrLn stdout e
+        IO.FS.Stream.flush stderr
     repl

@@ -6,7 +6,7 @@ An implementation of JSON Schema in Lean (GSoC 2024)
 ## Build
 Build docker image
 ```sh
-docker build --quiet -f Dockerfile -t lean-jsonschema .
+docker build -f Dockerfile -t localhost/lean-jsonschema .
 ```
 
 Run tests

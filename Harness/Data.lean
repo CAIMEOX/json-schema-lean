@@ -3,9 +3,6 @@ import Lean.Data.Json.Basic
 
 open Lean (Json)
 
-structure Command where
-  cmd : String
-  deriving Lean.FromJson, Lean.ToJson
 
 structure Implementation where
   language: String
@@ -29,12 +26,16 @@ structure ErrorResponse where
   error: String
   deriving Lean.FromJson, Lean.ToJson
 
+structure SkippedResponse where
+  seq: Nat
+  skipped: Bool
+  deriving Lean.FromJson, Lean.ToJson
 
 def meta : StartResponse := {
       version := 1,
       implementation := {
-        language := "lean",
         name := "jsonschema-lean",
+        language := "lean",
         homepage := "https://github.com/CAIMEOX/json-schema-lean",
         issues := "https://github.com/CAIMEOX/json-schema-lean/issues",
         source := "https://github.com/CAIMEOX/json-schema-lean.git",
