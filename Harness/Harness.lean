@@ -1,6 +1,15 @@
-import Harness.Data
+import Harness.Command
 import Lean.Data.Json
-open Lean (Json)
+open Lean
+
+def runTest (j: Json) : Except String String := do
+  let runReq : Except String RunRequest := fromJson? j
+  match runReq with
+    | Except.error e => Except.error e
+    | Except.ok run => do
+      let seq := run.seq
+      -- Skip Test for now
+      Except.ok (toJson (TestSkipped.default seq)).compress
 
 -- Dispatches the command to the appropriate handler
 def dispatch (s: String) : Except String String := do
@@ -12,11 +21,8 @@ def dispatch (s: String) : Except String String := do
       let j : DialectResponse := { ok := true }
       Except.ok (Lean.toJson j).compress
     | "stop" => Except.ok "{}"
-    | "run" =>
-      let seq : Nat <- j.getObjVal? "seq" >>= Json.getNat?
-      let skipped : SkippedResponse := { seq := seq, skipped := true }
-      Except.ok (Lean.toJson skipped).compress
-    | a => Except.error ("unknown command:" ++ a)
+    | "run" => runTest j
+    | a => Except.error ("fatal error: unknown command:" ++ a)
 
 -- Entry point of Harness
 partial def repl : IO Unit := do
