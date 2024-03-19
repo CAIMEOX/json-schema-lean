@@ -1,4 +1,5 @@
 import Harness.Command
+import JsonSchema.Compiler
 import Lean.Data.Json
 open Lean
 
@@ -8,8 +9,18 @@ def runTest (j: Json) : Except String String := do
     | Except.error e => Except.error e
     | Except.ok run => do
       let seq := run.seq
-      -- Skip Test for now
-      Except.ok (toJson (TestSkipped.default seq)).compress
+      let tests := run.case.tests
+      let schema := run.case.schema
+      let schema_compiled <- compile schema
+      let result: Array Valid := tests.map (fun t =>
+        let valid : Bool := validate schema_compiled t.instance_
+        { valid }
+      )
+      let response: TestValidated := {
+        seq := seq,
+        results := result
+      }
+      Except.ok (toJson response).compress
 
 -- Dispatches the command to the appropriate handler
 def dispatch (s: String) : Except String String := do

@@ -100,6 +100,15 @@ structure TestErrored where
   issue_url: String
   deriving ToJson
 
+structure Valid where
+  valid: Bool
+  deriving ToJson
+
+structure TestValidated where
+  seq: Nat
+  results: Array Valid
+  deriving ToJson
+
 def TestSkipped.default (seq: Nat) : TestSkipped := {
   seq,
   skipped := true,
