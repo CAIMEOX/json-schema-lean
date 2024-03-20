@@ -51,15 +51,31 @@ inductive SchemaType where
 -- JSON Schema (Draft 3) Core Schema Definition
 structure Schema where
   type : Array JsonType
+  const : Option Json
+
+def parseType (j : Json) : Except String (Array JsonType) := do
+  let t := j.getObjVal? "type"
+  match t with
+    | Except.ok t =>
+      match t with
+      | Json.str _ => do
+        let t <- (fromJson? t)
+        Except.ok #[t]
+      | Json.arr a => do
+        let b <- a.mapM (fromJson?)
+        Except.ok b
+      | _ => Except.ok #[AnyType]
+    | Except.error _ =>
+      Except.ok #[AnyType]
+
+def parseConst (j : Json) : Except String (Option Json) := do
+  let c := j.getObjVal? "const"
+  match c with
+    | Except.ok j => Except.ok (some j)
+    | Except.error _ => Except.ok none
 
 instance : FromJson Schema where
   fromJson? j := do
-    let t <- j.getObjVal? "type"
-    match t with
-      | Json.str _ => do
-        let t <- (fromJson? t)
-        Except.ok ({ type := #[t] } : Schema)
-      | Json.arr a => do
-        let b <- a.mapM (fromJson?)
-        Except.ok ({ type := b } : Schema)
-      | _ => Except.error ("not a valid type" ++ t.compress)
+    let type <- parseType j
+    let const <- parseConst j
+    Except.ok { type := type, const }

@@ -13,8 +13,10 @@ def runTest (j: Json) : Except String String := do
       let schema := run.case.schema
       let schema_compiled <- compile schema
       let result: Array Valid := tests.map (fun t =>
-        let valid : Bool := validate schema_compiled t.instance_
-        { valid }
+        let valid : ValidationError := validate schema_compiled t.instance_
+        match valid with
+          | .ok _ => { valid := true }
+          | .error _ => { valid := false }
       )
       let response: TestValidated := {
         seq := seq,
