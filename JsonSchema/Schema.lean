@@ -2,7 +2,6 @@ import Lean.Data.Json
 
 open Lean
 open Json
-def Number := Float deriving BEq, Repr
 inductive JsonType where
   | StringType
   | NumberType
@@ -41,7 +40,7 @@ instance : FromJson JsonType where
 
 inductive SchemaType where
   | string (s: String): SchemaType
-  | number (n : Number) : SchemaType
+  | number (n : Float) : SchemaType
   | boolean (b : Bool) : SchemaType
   | array (a : Array SchemaType) : SchemaType
   | object (o : List (String × SchemaType)) : SchemaType
@@ -52,6 +51,29 @@ inductive SchemaType where
 structure Schema where
   type : Array JsonType
   const : Option Json
+  enum : Option $ Array Json
+
+  maxLength : Option Nat
+  minLength : Option Nat
+
+  maximum : Option Float
+  minimum : Option Float
+  exclusiveMaximum : Option Float
+  exclusiveMinimum : Option Float
+  multipleOf : Option Float
+
+  uniqueItems : Bool
+
+  required : Option (Array String)
+
+def parseRequired (j : Json) : Except String $ Option $ Array String := do
+  let c := j.getObjVal? "required"
+  match c with
+    | Except.ok j => do
+      let arr <- j.getArr?
+      let b <- arr.mapM (fromJson?)
+      Except.ok (some b)
+    | Except.error _ => Except.ok none
 
 def parseType (j : Json) : Except String (Array JsonType) := do
   let t := j.getObjVal? "type"
@@ -74,8 +96,103 @@ def parseConst (j : Json) : Except String (Option Json) := do
     | Except.ok j => Except.ok (some j)
     | Except.error _ => Except.ok none
 
+def parseEnum (j : Json) : Except String (Option $ Array Json) := do
+  let c := j.getObjVal? "enum"
+  match c with
+    | Except.ok j => do
+      let arr <- j.getArr?
+      Except.ok (some arr)
+    | Except.error _ => Except.ok none
+
+def parseMaxLength (j : Json) : Except String (Option Nat) := do
+  let c := j.getObjVal? "maxLength"
+  match c with
+    | Except.ok j => do
+      let i <- j.getNat?
+      Except.ok (some i)
+    | Except.error _ => Except.ok none
+
+def parseMinLength (j : Json) : Except String (Option Nat) := do
+  let c := j.getObjVal? "minLength"
+  match c with
+    | Except.ok j => do
+      let i <- j.getNat?
+      Except.ok (some i)
+    | Except.error _ => Except.ok none
+
+def parseMaximum (j : Json) : Except String (Option Float) := do
+  let c := j.getObjVal? "maximum"
+  match c with
+    | Except.ok j => do
+      let i <- j.getNum?
+      Except.ok (some i.toFloat)
+    | Except.error _ => Except.ok none
+
+def parseMinimum (j : Json) : Except String (Option Float) := do
+  let c := j.getObjVal? "minimum"
+  match c with
+    | Except.ok j => do
+      let i <- j.getNum?
+      Except.ok (some i.toFloat)
+    | Except.error _ => Except.ok none
+
+def parseExclusiveMaximum (j : Json) : Except String (Option Float) := do
+  let c := j.getObjVal? "exclusiveMaximum"
+  match c with
+    | Except.ok j => do
+      let i <- j.getNum?
+      Except.ok (some i.toFloat)
+    | Except.error _ => Except.ok none
+
+def parseExclusiveMinimum (j : Json) : Except String (Option Float) := do
+  let c := j.getObjVal? "exclusiveMinimum"
+  match c with
+    | Except.ok j => do
+      let i <- j.getNum?
+      Except.ok (some i.toFloat)
+    | Except.error _ => Except.ok none
+
+def parseMultipleOf (j : Json) : Except String (Option Float) := do
+  let c := j.getObjVal? "multipleOf"
+  match c with
+    | Except.ok j => do
+      let i <- j.getNum?
+      Except.ok (some i.toFloat)
+    | Except.error _ => Except.ok none
+
+def parseUniqueItems (j : Json) : Except String Bool := do
+  let c := j.getObjVal? "uniqueItems"
+  match c with
+    | Except.ok j => do
+      let i <- j.getBool?
+      Except.ok i
+    | Except.error _ => Except.ok false
+
 instance : FromJson Schema where
   fromJson? j := do
     let type <- parseType j
     let const <- parseConst j
-    Except.ok { type := type, const }
+    let maxLength <- parseMaxLength j
+    let minLength <- parseMinLength j
+    let maximum <- parseMaximum j
+    let minimum <- parseMinimum j
+    let multipleOf <- parseMultipleOf j
+    let enum <- parseEnum j
+    let uniqueItems <- parseUniqueItems j
+    let exclusiveMaximum <- parseExclusiveMaximum j
+    let exclusiveMinimum <- parseExclusiveMinimum j
+    let required <- parseRequired j
+    Except.ok {
+      type,
+      const,
+      enum,
+      maxLength,
+      minLength,
+      maximum,
+      minimum,
+      exclusiveMaximum,
+      exclusiveMinimum,
+      multipleOf,
+      uniqueItems,
+      required
+    }

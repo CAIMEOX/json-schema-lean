@@ -5,16 +5,16 @@ open Lean
 open Json
 
 -- This copys from the core library but with a few modifications on number comparison
-partial def validate_const : Json -> Json -> Bool
+partial def validateConst : Json -> Json -> Bool
   | null,   null   => true
   | .bool a, .bool b => a == b
   | num a,  num b  => a.toFloat == b.toFloat
   | str a,  str b  => a == b
   | arr a,  arr b  =>
-    let _ : BEq Json := ⟨validate_const⟩
+    let _ : BEq Json := ⟨validateConst⟩
     a == b
   | obj a,  obj b =>
-    let _ : BEq Json := ⟨validate_const⟩
+    let _ : BEq Json := ⟨validateConst⟩
     let szA := a.fold (init := 0) (fun a _ _ => a + 1)
     let szB := b.fold (init := 0) (fun a _ _ => a + 1)
     szA == szB && a.all fun field fa =>
@@ -23,8 +23,84 @@ partial def validate_const : Json -> Json -> Bool
       | some fb => fa == fb
   | _,      _      => false
 
+def validateMaxLength (max_length: Nat) (json : Json) : ValidationError :=
+  match json with
+  | Json.str s =>
+    if s.length <= max_length
+      then fine
+      else reportError s!"String is too long, max length is {max_length}, got " s.length
+  | _ => fine
 
-def validate_single_type (typ: JsonType) (json : Json) : ValidationError :=
+def validateMinLength (min_length: Nat) (json : Json) : ValidationError :=
+  match json with
+  | Json.str s =>
+    if s.length >= min_length
+      then fine
+      else reportError s!"String is too short, min length is {min_length}, got " s.length
+  | _ => fine
+
+def validateMaximum (maximum: Float) (json : Json) : ValidationError :=
+  match json with
+  | Json.num n =>
+    if n.toFloat <= maximum
+      then fine
+      else reportError s!"Number is too large, max is {maximum}, got " n.toString
+  | _ => fine
+
+def validateExclusiveMaximum (maximum: Float) (json : Json) : ValidationError :=
+  match json with
+  | Json.num n =>
+    if n.toFloat < maximum
+      then fine
+      else reportError s!"Number is too large, max is {maximum}, got " n.toString
+  | _ => fine
+
+def validateExclusiveMinimum (minimum: Float) (json : Json) : ValidationError :=
+  match json with
+  | Json.num n =>
+    if n.toFloat > minimum
+      then fine
+      else reportError s!"Number is too small, min is {minimum}, got " n.toString
+  | _ => fine
+
+def validateMinimum (minimum: Float) (json : Json) : ValidationError :=
+  match json with
+  | Json.num n =>
+    if n.toFloat >= minimum
+      then fine
+      else reportError s!"Number is too small, min is {minimum}, got " n.toString
+  | _ => fine
+
+def validateMultipleOf (multiple_of: Float) (json : Json) : ValidationError :=
+  match json with
+  | Json.num n =>
+    if n.toFloat / multiple_of == (n.toFloat / multiple_of).round
+      then fine
+      else reportError s!"Number is not multiple of {multiple_of}, got " n.toString
+  | _ => fine
+
+def validateEnum (enum: Array Json) (json : Json) : ValidationError :=
+  if enum.any (fun e => validateConst e json)
+    then fine
+    else reportError s!"Expected one of {enum}, got " json
+
+def validateUniqueItems (json : Json) : ValidationError :=
+  match json with
+  | Json.arr array =>
+    if array.all (fun a => array.all (fun b => a == b || a != b))
+      then fine
+      else reportError s!"Array has duplicate items: " json
+  | _ => fine
+
+def validateRequired (required: Array String) (json : Json) : ValidationError :=
+  match json with
+  | Json.obj _ =>
+    if required.all (fun r => (json.getObjVal? r).isOk)
+      then fine
+      else reportError s!"Object is missing required fields: {required}, got " json
+  | _ => fine
+
+def validateType (typ: JsonType) (json : Json) : ValidationError :=
   match typ with
   | .StringType =>
     match json with
@@ -60,7 +136,7 @@ def validate (schema: Schema) (json : Json) : ValidationError :=
   let type : Array JsonType := schema.type
   let const : Option Json := schema.const
   let type_checked : Bool := type.any (fun t =>
-    let r := validate_single_type t json
+    let r := validateType t json
     match r with
       | .ok _ => true
       | .error _ => false
@@ -70,4 +146,4 @@ def validate (schema: Schema) (json : Json) : ValidationError :=
     | true =>
       match const with
       | none => fine
-      | some c => if validate_const c json then fine else reportError s!"Expected {c} got " json
+      | some c => if validateConst c json then fine else reportError s!"Expected {c} got " json
