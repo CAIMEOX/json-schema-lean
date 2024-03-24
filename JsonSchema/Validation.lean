@@ -5,16 +5,16 @@ open Lean
 open Json
 
 -- This copys from the core library but with a few modifications on number comparison
-partial def validateConst : Json -> Json -> Bool
+partial def jsonSchemaEq : Json -> Json -> Bool
   | null,   null   => true
   | .bool a, .bool b => a == b
   | num a,  num b  => a.toFloat == b.toFloat
   | str a,  str b  => a == b
   | arr a,  arr b  =>
-    let _ : BEq Json := ⟨validateConst⟩
+    let _ : BEq Json := ⟨jsonSchemaEq⟩
     a == b
   | obj a,  obj b =>
-    let _ : BEq Json := ⟨validateConst⟩
+    let _ : BEq Json := ⟨jsonSchemaEq⟩
     let szA := a.fold (init := 0) (fun a _ _ => a + 1)
     let szB := b.fold (init := 0) (fun a _ _ => a + 1)
     szA == szB && a.all fun field fa =>
@@ -22,6 +22,11 @@ partial def validateConst : Json -> Json -> Bool
       | none    => false
       | some fb => fa == fb
   | _,      _      => false
+
+def validateConst (const: Json) (json : Json) : ValidationError :=
+  if jsonSchemaEq const json
+    then fine
+    else reportError s!"Expected {const}, got " json
 
 def validateMaxLength (max_length: Nat) (json : Json) : ValidationError :=
   match json with
@@ -80,7 +85,7 @@ def validateMultipleOf (multiple_of: Float) (json : Json) : ValidationError :=
   | _ => fine
 
 def validateEnum (enum: Array Json) (json : Json) : ValidationError :=
-  if enum.any (fun e => validateConst e json)
+  if enum.any (fun e => jsonSchemaEq e json)
     then fine
     else reportError s!"Expected one of {enum}, got " json
 
@@ -100,7 +105,7 @@ def validateRequired (required: Array String) (json : Json) : ValidationError :=
       else reportError s!"Object is missing required fields: {required}, got " json
   | _ => fine
 
-def validateType (typ: JsonType) (json : Json) : ValidationError :=
+def validateTypeSingle (typ: JsonType) (json : Json) : ValidationError :=
   match typ with
   | .StringType =>
     match json with
@@ -132,18 +137,35 @@ def validateType (typ: JsonType) (json : Json) : ValidationError :=
     | _ => reportError "Expected integer, got " json
   | .AnyType => fine
 
-def validate (schema: Schema) (json : Json) : ValidationError :=
-  let type : Array JsonType := schema.type
-  let const : Option Json := schema.const
-  let type_checked : Bool := type.any (fun t =>
-    let r := validateType t json
-    match r with
+def validateTypes (types: Array JsonType) (json : Json) : ValidationError :=
+  if types.any (fun t =>
+    match validateTypeSingle t json with
       | .ok _ => true
       | .error _ => false
-  )
-  match type_checked with
-    | false => Except.error #["Type mismatch"]
-    | true =>
-      match const with
-      | none => fine
-      | some c => if validateConst c json then fine else reportError s!"Expected {c} got " json
+    )
+    then fine
+    else reportError s!"Expected one of {types}, got " json
+
+def maybeCheck {α : Type} (arg: Option α) (f: α -> ValidationError) : ValidationError :=
+  match arg with
+  | none => fine
+  | some a => f a
+
+def boolCheck (arg: Option Bool) (f: Bool -> ValidationError) : ValidationError :=
+  match arg with
+  | none => fine
+  | some a => f a
+
+def validate (schema: Schema) (json : Json) : ValidationError := do
+  validateTypes schema.type json *>
+  maybeCheck schema.const (validateConst json) *>
+  maybeCheck schema.maxLength (fun t => validateMaxLength t json) *>
+  maybeCheck schema.minLength (fun t => validateMinLength t json) *>
+  maybeCheck schema.maximum (fun t => validateMaximum t json) *>
+  maybeCheck schema.exclusiveMaximum (fun t => validateExclusiveMaximum t json) *>
+  maybeCheck schema.minimum (fun t => validateMinimum t json) *>
+  maybeCheck schema.exclusiveMinimum (fun t => validateExclusiveMinimum t json) *>
+  maybeCheck schema.multipleOf (fun t => validateMultipleOf t json) *>
+  maybeCheck schema.enum (fun t => validateEnum t json) *>
+  maybeCheck schema.required (fun t => validateRequired t json) *>
+  boolCheck schema.uniqueItems (fun _ => validateUniqueItems json)

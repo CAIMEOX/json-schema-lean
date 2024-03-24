@@ -13,6 +13,17 @@ inductive JsonType where
   | AnyType
   deriving BEq, Repr
 
+instance : ToString JsonType where
+  toString jt := match jt with
+    | JsonType.StringType => "string"
+    | JsonType.NumberType => "number"
+    | JsonType.IntegerType => "integer"
+    | JsonType.BooleanType => "boolean"
+    | JsonType.ObjectType => "object"
+    | JsonType.ArrayType => "array"
+    | JsonType.NullType => "null"
+    | JsonType.AnyType => "any"
+
 abbrev JsonType.asType (jt: JsonType) : Type :=
   match jt with
     | JsonType.StringType => String
@@ -108,16 +119,16 @@ def parseMaxLength (j : Json) : Except String (Option Nat) := do
   let c := j.getObjVal? "maxLength"
   match c with
     | Except.ok j => do
-      let i <- j.getNat?
-      Except.ok (some i)
+      let i <- j.getNum?
+      Except.ok (some i.toFloat.toUInt64.toNat)
     | Except.error _ => Except.ok none
 
 def parseMinLength (j : Json) : Except String (Option Nat) := do
   let c := j.getObjVal? "minLength"
   match c with
     | Except.ok j => do
-      let i <- j.getNat?
-      Except.ok (some i)
+      let i <- j.getNum?
+      Except.ok (some i.toFloat.toUInt64.toNat)
     | Except.error _ => Except.ok none
 
 def parseMaximum (j : Json) : Except String (Option Float) := do
