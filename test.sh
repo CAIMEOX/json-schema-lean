@@ -26,6 +26,7 @@ run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tes
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/allOf.json
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/anyOf.json
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/oneOf.json
+run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/not.json
 
 if [ $FAILED -eq 1 ]; then
     echo "Some tests failed!" >&2

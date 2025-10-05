@@ -187,6 +187,12 @@ def validateOneOf (validator: Schema → Json → ValidationError) (schemas: Arr
   | 0 => reportError s!"oneOf: expected exactly 1 match but got 0. Errors: {errors}" json
   | n => reportError s!"oneOf: expected exactly 1 match but got {n}" json
 
+def validateNot (validator: Schema → Json → ValidationError) (schema: Schema) (json: Json) : ValidationError :=
+  let result := validator schema json
+  match result with
+  | .ok _ => reportError s!"not: expected schema to NOT match but it did" json
+  | .error _ => fine
+
 def validateProperties (validator: Schema → Json → ValidationError) (properties : Array (String × Schema)) (json : Json) : ValidationError :=
   properties.foldlM (init := ()) fun _ (propName, propSchema) =>
     match json.getObjVal? propName with
@@ -223,7 +229,8 @@ def validateObject (validator: Schema → Json → ValidationError) (schemaObj: 
   maybeCheck schemaObj.items (fun items => validateItems validator items json) *>
   maybeCheck schemaObj.allOf (fun allOf => validateAllOf validator allOf json) *>
   maybeCheck schemaObj.anyOf (fun anyOf => validateAnyOf validator anyOf json) *>
-  maybeCheck schemaObj.oneOf (fun oneOf => validateOneOf validator oneOf json)
+  maybeCheck schemaObj.oneOf (fun oneOf => validateOneOf validator oneOf json) *>
+  maybeCheck schemaObj.not (fun notSchema => validateNot validator notSchema json)
 
 partial def validate (schema: Schema) (json : Json) : ValidationError :=
   match schema with

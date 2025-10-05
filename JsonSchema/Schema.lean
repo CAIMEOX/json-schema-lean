@@ -71,6 +71,7 @@ mutual
     allOf : Option (Array Schema)
     anyOf : Option (Array Schema)
     oneOf : Option (Array Schema)
+    not : Option Schema
 end
 
 def parseRequired (j : Json) : Except String $ Option $ Array String := do
@@ -218,6 +219,12 @@ def parseItems (j : Json) : Except String (Option (Sum Json (Array Json))) := do
       | _ => Except.ok (.some (.inl j))
     | Except.error _ => Except.ok none
 
+def parseNot (j : Json) : Except String (Option Json) := do
+  let c := j.getObjVal? "not"
+  match c with
+    | Except.ok j => Except.ok (some j)
+    | Except.error _ => Except.ok none
+
 partial def schemaFromJson (j : Json) : Except String Schema := do
   match j with
   | Json.bool b => Except.ok (Schema.Boolean b)
@@ -271,6 +278,12 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
         Except.ok (some parsed)
       | none => Except.ok none
 
+    let not <- match (<- parseNot j) with
+      | some notJson => do
+        let parsed <- schemaFromJson notJson
+        Except.ok (some parsed)
+      | none => Except.ok none
+
     Except.ok (Schema.Object {
       type,
       const,
@@ -288,7 +301,8 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       items,
       allOf,
       anyOf,
-      oneOf
+      oneOf,
+      not
     })
 
 instance : FromJson Schema where
