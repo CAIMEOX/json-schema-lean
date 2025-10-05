@@ -23,6 +23,8 @@ partial def jsonSchemaEq : Json -> Json -> Bool
       | some fb => fa == fb
   | _,      _      => false
 
+def Lean.JsonNumber.isInt (n : JsonNumber) : Bool := n.mantissa % (10 ^ n.exponent) == 0
+
 def validateConst (const: Json) (json : Json) : ValidationError :=
   if jsonSchemaEq const json
     then fine
@@ -76,10 +78,12 @@ def validateMinimum (minimum: Float) (json : Json) : ValidationError :=
       else reportError s!"Number is too small, min is {minimum}, got " n.toString
   | _ => fine
 
+def Float.isInt (x : Float) := x.round == x && x.isFinite
+
 def validateMultipleOf (multiple_of: Float) (json : Json) : ValidationError :=
   match json with
   | Json.num n =>
-    if n.toFloat / multiple_of == (n.toFloat / multiple_of).round
+    if (n.toFloat / multiple_of).isInt
       then fine
       else reportError s!"Number is not multiple of {multiple_of}, got " n.toString
   | _ => fine
@@ -137,7 +141,7 @@ def validateTypeSingle (typ: JsonType) (json : Json) : ValidationError :=
     | _ => reportError "Expected null, got " json
   | .IntegerType =>
     match json with
-    | Json.num n => if n.toFloat - n.toFloat.round == 0 then fine else reportError "Expected integer, got " json
+    | Json.num n => if n.isInt then fine else reportError "Expected integer, got " json
     | _ => reportError "Expected integer, got " json
   | .AnyType => fine
 
@@ -171,8 +175,35 @@ partial def validate (schema: Schema) (json : Json) : ValidationError := do
   maybeCheck schema.enum (fun t => validateEnum t json) *>
   maybeCheck schema.required (fun t => validateRequired t json) *>
   boolCheck schema.uniqueItems (fun _ => validateUniqueItems json) *>
-  maybeCheck schema.properties (fun properties => validateProperties properties json)
+  maybeCheck schema.properties (fun properties => validateProperties properties json) *>
+  maybeCheck schema.allOf (fun allOf => validateAllOf allOf json) *>
+  maybeCheck schema.anyOf (fun anyOf => validateAnyOf anyOf json) *>
+  maybeCheck schema.oneOf (fun oneOf => validateOneOf oneOf json)
 where
+  validateAllOf (schemas: Array Schema) (json: Json) : ValidationError :=
+    schemas.foldlM (init := ()) fun _ schema => validate schema json
+
+  validateAnyOf (schemas: Array Schema) (json: Json) : ValidationError :=
+    let (hasValid, errors) := schemas.foldl (init := (false, #[])) fun (valid, errs) schema =>
+      match validate schema json with
+      | .ok _ => (true, errs)
+      | .error msg => (valid, errs.push msg)
+    if hasValid then fine
+    else reportError s!"anyOf: no schemas matched. Errors: {errors}" json
+
+  validateOneOf (schemas: Array Schema) (json: Json) : ValidationError :=
+    let (validCount, errors) := schemas.foldl (init := (0, #[])) fun (count, errs) schema =>
+      if count > 1 then (count, errs)  -- Short-circuit if already found more than one
+      else
+        let result := validate schema json
+        match result with
+        | .ok _ => (count + 1, errs)
+        | .error msg => (count, errs.push msg)
+    match validCount with
+    | 1 => fine
+    | 0 => reportError s!"oneOf: expected exactly 1 match but got 0. Errors: {errors}" json
+    | n => reportError s!"oneOf: expected exactly 1 match but got {n}" json
+
   validateProperties (properties : Array (String × Schema)) (json : Json) : ValidationError :=
     properties.foldlM (init := ()) fun _ (propName, propSchema) =>
       match json.getObjVal? propName with

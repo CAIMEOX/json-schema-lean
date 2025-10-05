@@ -57,6 +57,10 @@ structure Schema where
   required : Option (Array String)
   properties : Option (Array (String × Schema))
 
+  allOf : Option (Array Schema)
+  anyOf : Option (Array Schema)
+  oneOf : Option (Array Schema)
+
 def parseRequired (j : Json) : Except String $ Option $ Array String := do
   let c := j.getObjVal? "required"
   match c with
@@ -169,6 +173,30 @@ def parseProperties (j : Json) : Except String (Option (Array (String × Json)))
       Except.ok (some props)
     | Except.error _ => Except.ok none
 
+def parseAllOf (j : Json) : Except String (Option (Array Json)) := do
+  let c := j.getObjVal? "allOf"
+  match c with
+    | Except.ok j => do
+      let arr <- j.getArr?
+      Except.ok (some arr)
+    | Except.error _ => Except.ok none
+
+def parseAnyOf (j : Json) : Except String (Option (Array Json)) := do
+  let c := j.getObjVal? "anyOf"
+  match c with
+    | Except.ok j => do
+      let arr <- j.getArr?
+      Except.ok (some arr)
+    | Except.error _ => Except.ok none
+
+def parseOneOf (j : Json) : Except String (Option (Array Json)) := do
+  let c := j.getObjVal? "oneOf"
+  match c with
+    | Except.ok j => do
+      let arr <- j.getArr?
+      Except.ok (some arr)
+    | Except.error _ => Except.ok none
+
 partial def schemaFromJson (j : Json) : Except String Schema := do
   let type <- parseType j
   let const <- parseConst j
@@ -192,6 +220,24 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       Except.ok (some parsed)
     | none => Except.ok none
 
+  let allOf <- match (<- parseAllOf j) with
+    | some schemas => do
+      let parsed <- schemas.mapM schemaFromJson
+      Except.ok (some parsed)
+    | none => Except.ok none
+
+  let anyOf <- match (<- parseAnyOf j) with
+    | some schemas => do
+      let parsed <- schemas.mapM schemaFromJson
+      Except.ok (some parsed)
+    | none => Except.ok none
+
+  let oneOf <- match (<- parseOneOf j) with
+    | some schemas => do
+      let parsed <- schemas.mapM schemaFromJson
+      Except.ok (some parsed)
+    | none => Except.ok none
+
   Except.ok {
     type,
     const,
@@ -205,7 +251,10 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
     multipleOf,
     uniqueItems,
     required,
-    properties
+    properties,
+    allOf,
+    anyOf,
+    oneOf
   }
 
 instance : FromJson Schema where
