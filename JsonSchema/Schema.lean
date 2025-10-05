@@ -38,28 +38,34 @@ instance : FromJson JsonType where
     | Json.str _ => Except.error "not a valid type"
     | _ => Except.error "not a string"
 
-structure Schema where
-  type : Array JsonType
-  const : Option Json
-  enum : Option $ Array Json
+mutual
+  inductive Schema where
+    | Boolean : Bool → Schema
+    | Object : SchemaObject → Schema
 
-  maxLength : Option Nat
-  minLength : Option Nat
+  structure SchemaObject where
+    type : Array JsonType
+    const : Option Json
+    enum : Option $ Array Json
 
-  maximum : Option Float
-  minimum : Option Float
-  exclusiveMaximum : Option Float
-  exclusiveMinimum : Option Float
-  multipleOf : Option Float
+    maxLength : Option Nat
+    minLength : Option Nat
 
-  uniqueItems : Bool
+    maximum : Option Float
+    minimum : Option Float
+    exclusiveMaximum : Option Float
+    exclusiveMinimum : Option Float
+    multipleOf : Option Float
 
-  required : Option (Array String)
-  properties : Option (Array (String × Schema))
+    uniqueItems : Bool
 
-  allOf : Option (Array Schema)
-  anyOf : Option (Array Schema)
-  oneOf : Option (Array Schema)
+    required : Option (Array String)
+    properties : Option (Array (String × Schema))
+
+    allOf : Option (Array Schema)
+    anyOf : Option (Array Schema)
+    oneOf : Option (Array Schema)
+end
 
 def parseRequired (j : Json) : Except String $ Option $ Array String := do
   let c := j.getObjVal? "required"
@@ -198,64 +204,67 @@ def parseOneOf (j : Json) : Except String (Option (Array Json)) := do
     | Except.error _ => Except.ok none
 
 partial def schemaFromJson (j : Json) : Except String Schema := do
-  let type <- parseType j
-  let const <- parseConst j
-  let maxLength <- parseMaxLength j
-  let minLength <- parseMinLength j
-  let maximum <- parseMaximum j
-  let minimum <- parseMinimum j
-  let multipleOf <- parseMultipleOf j
-  let enum <- parseEnum j
-  let uniqueItems <- parseUniqueItems j
-  let exclusiveMaximum <- parseExclusiveMaximum j
-  let exclusiveMinimum <- parseExclusiveMinimum j
-  let required <- parseRequired j
+  match j with
+  | Json.bool b => Except.ok (Schema.Boolean b)
+  | _ => do
+    let type <- parseType j
+    let const <- parseConst j
+    let maxLength <- parseMaxLength j
+    let minLength <- parseMinLength j
+    let maximum <- parseMaximum j
+    let minimum <- parseMinimum j
+    let multipleOf <- parseMultipleOf j
+    let enum <- parseEnum j
+    let uniqueItems <- parseUniqueItems j
+    let exclusiveMaximum <- parseExclusiveMaximum j
+    let exclusiveMinimum <- parseExclusiveMinimum j
+    let required <- parseRequired j
 
-  -- Recursively parse the schema JSON values
-  let properties <- match (<- parseProperties j) with
-    | some props => do
-      let parsed <- props.mapM fun (key, val) => do
-        let schema <- schemaFromJson val
-        Except.ok (key, schema)
-      Except.ok (some parsed)
-    | none => Except.ok none
+    -- Recursively parse the schema JSON values
+    let properties <- match (<- parseProperties j) with
+      | some props => do
+        let parsed <- props.mapM fun (key, val) => do
+          let schema <- schemaFromJson val
+          Except.ok (key, schema)
+        Except.ok (some parsed)
+      | none => Except.ok none
 
-  let allOf <- match (<- parseAllOf j) with
-    | some schemas => do
-      let parsed <- schemas.mapM schemaFromJson
-      Except.ok (some parsed)
-    | none => Except.ok none
+    let allOf <- match (<- parseAllOf j) with
+      | some schemas => do
+        let parsed <- schemas.mapM schemaFromJson
+        Except.ok (some parsed)
+      | none => Except.ok none
 
-  let anyOf <- match (<- parseAnyOf j) with
-    | some schemas => do
-      let parsed <- schemas.mapM schemaFromJson
-      Except.ok (some parsed)
-    | none => Except.ok none
+    let anyOf <- match (<- parseAnyOf j) with
+      | some schemas => do
+        let parsed <- schemas.mapM schemaFromJson
+        Except.ok (some parsed)
+      | none => Except.ok none
 
-  let oneOf <- match (<- parseOneOf j) with
-    | some schemas => do
-      let parsed <- schemas.mapM schemaFromJson
-      Except.ok (some parsed)
-    | none => Except.ok none
+    let oneOf <- match (<- parseOneOf j) with
+      | some schemas => do
+        let parsed <- schemas.mapM schemaFromJson
+        Except.ok (some parsed)
+      | none => Except.ok none
 
-  Except.ok {
-    type,
-    const,
-    enum,
-    maxLength,
-    minLength,
-    maximum,
-    minimum,
-    exclusiveMaximum,
-    exclusiveMinimum,
-    multipleOf,
-    uniqueItems,
-    required,
-    properties,
-    allOf,
-    anyOf,
-    oneOf
-  }
+    Except.ok (Schema.Object {
+      type,
+      const,
+      enum,
+      maxLength,
+      minLength,
+      maximum,
+      minimum,
+      exclusiveMaximum,
+      exclusiveMinimum,
+      multipleOf,
+      uniqueItems,
+      required,
+      properties,
+      allOf,
+      anyOf,
+      oneOf
+    })
 
 instance : FromJson Schema where
   fromJson? := schemaFromJson

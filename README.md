@@ -103,9 +103,9 @@ The core implementation is divided into the following modules:
   - [x] required
   - [x] uniqueItems
   - [x] multipleOf
-  - [ ] allOf
-  - [ ] anyOf
-  - [ ] oneOf
+  - [x] allOf
+  - [x] anyOf
+  - [x] oneOf
   - [ ] properties
   - [ ] additionalProperties
   - [ ] not

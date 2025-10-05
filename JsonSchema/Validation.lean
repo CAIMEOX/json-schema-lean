@@ -3,6 +3,7 @@ import JsonSchema.Error
 import Lean.Data.Json
 open Lean
 open Json
+open Schema
 
 -- This copys from the core library but with a few modifications on number comparison
 partial def jsonSchemaEq : Json -> Json -> Bool
@@ -162,50 +163,55 @@ def maybeCheck {α : Type} (arg: Option α) (f: α -> ValidationError) : Validat
 def boolCheck (arg: Bool) (f: Unit -> ValidationError) : ValidationError :=
   if arg then f () else fine
 
-partial def validate (schema: Schema) (json : Json) : ValidationError := do
-  validateTypes schema.type json *>
-  maybeCheck schema.const (validateConst json) *>
-  maybeCheck schema.maxLength (fun t => validateMaxLength t json) *>
-  maybeCheck schema.minLength (fun t => validateMinLength t json) *>
-  maybeCheck schema.maximum (fun t => validateMaximum t json) *>
-  maybeCheck schema.exclusiveMaximum (fun t => validateExclusiveMaximum t json) *>
-  maybeCheck schema.minimum (fun t => validateMinimum t json) *>
-  maybeCheck schema.exclusiveMinimum (fun t => validateExclusiveMinimum t json) *>
-  maybeCheck schema.multipleOf (fun t => validateMultipleOf t json) *>
-  maybeCheck schema.enum (fun t => validateEnum t json) *>
-  maybeCheck schema.required (fun t => validateRequired t json) *>
-  boolCheck schema.uniqueItems (fun _ => validateUniqueItems json) *>
-  maybeCheck schema.properties (fun properties => validateProperties properties json) *>
-  maybeCheck schema.allOf (fun allOf => validateAllOf allOf json) *>
-  maybeCheck schema.anyOf (fun anyOf => validateAnyOf anyOf json) *>
-  maybeCheck schema.oneOf (fun oneOf => validateOneOf oneOf json)
-where
-  validateAllOf (schemas: Array Schema) (json: Json) : ValidationError :=
-    schemas.foldlM (init := ()) fun _ schema => validate schema json
+def validateAllOf (validator: Schema → Json → ValidationError) (schemas: Array Schema) (json: Json) : ValidationError :=
+  schemas.foldlM (init := ()) fun _ schema => validator schema json
 
-  validateAnyOf (schemas: Array Schema) (json: Json) : ValidationError :=
-    let (hasValid, errors) := schemas.foldl (init := (false, #[])) fun (valid, errs) schema =>
-      match validate schema json with
-      | .ok _ => (true, errs)
-      | .error msg => (valid, errs.push msg)
-    if hasValid then fine
-    else reportError s!"anyOf: no schemas matched. Errors: {errors}" json
+def validateAnyOf (validator: Schema → Json → ValidationError) (schemas: Array Schema) (json: Json) : ValidationError :=
+  let (hasValid, errors) := schemas.foldl (init := (false, #[])) fun (valid, errs) schema =>
+    match validator schema json with
+    | .ok _ => (true, errs)
+    | .error msg => (valid, errs.push msg)
+  if hasValid then fine
+  else reportError s!"anyOf: no schemas matched. Errors: {errors}" json
 
-  validateOneOf (schemas: Array Schema) (json: Json) : ValidationError :=
-    let (validCount, errors) := schemas.foldl (init := (0, #[])) fun (count, errs) schema =>
-      if count > 1 then (count, errs)  -- Short-circuit if already found more than one
-      else
-        let result := validate schema json
-        match result with
-        | .ok _ => (count + 1, errs)
-        | .error msg => (count, errs.push msg)
-    match validCount with
-    | 1 => fine
-    | 0 => reportError s!"oneOf: expected exactly 1 match but got 0. Errors: {errors}" json
-    | n => reportError s!"oneOf: expected exactly 1 match but got {n}" json
+def validateOneOf (validator: Schema → Json → ValidationError) (schemas: Array Schema) (json: Json) : ValidationError :=
+  let (validCount, errors) := schemas.foldl (init := (0, #[])) fun (count, errs) schema =>
+    if count > 1 then (count, errs)
+    else
+      let result := validator schema json
+      match result with
+      | .ok _ => (count + 1, errs)
+      | .error msg => (count, errs.push msg)
+  match validCount with
+  | 1 => fine
+  | 0 => reportError s!"oneOf: expected exactly 1 match but got 0. Errors: {errors}" json
+  | n => reportError s!"oneOf: expected exactly 1 match but got {n}" json
 
-  validateProperties (properties : Array (String × Schema)) (json : Json) : ValidationError :=
-    properties.foldlM (init := ()) fun _ (propName, propSchema) =>
-      match json.getObjVal? propName with
-      | .ok propValue => validate propSchema propValue
-      | .error _ => fine
+def validateProperties (validator: Schema → Json → ValidationError) (properties : Array (String × Schema)) (json : Json) : ValidationError :=
+  properties.foldlM (init := ()) fun _ (propName, propSchema) =>
+    match json.getObjVal? propName with
+    | .ok propValue => validator propSchema propValue
+    | .error _ => fine
+
+def validateObject (validator: Schema → Json → ValidationError) (schemaObj: SchemaObject) (json: Json) : ValidationError := do
+  validateTypes schemaObj.type json *>
+  maybeCheck schemaObj.const (validateConst json) *>
+  maybeCheck schemaObj.maxLength (fun t => validateMaxLength t json) *>
+  maybeCheck schemaObj.minLength (fun t => validateMinLength t json) *>
+  maybeCheck schemaObj.maximum (fun t => validateMaximum t json) *>
+  maybeCheck schemaObj.exclusiveMaximum (fun t => validateExclusiveMaximum t json) *>
+  maybeCheck schemaObj.minimum (fun t => validateMinimum t json) *>
+  maybeCheck schemaObj.exclusiveMinimum (fun t => validateExclusiveMinimum t json) *>
+  maybeCheck schemaObj.multipleOf (fun t => validateMultipleOf t json) *>
+  maybeCheck schemaObj.enum (fun t => validateEnum t json) *>
+  maybeCheck schemaObj.required (fun t => validateRequired t json) *>
+  boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
+  maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
+  maybeCheck schemaObj.allOf (fun allOf => validateAllOf validator allOf json) *>
+  maybeCheck schemaObj.anyOf (fun anyOf => validateAnyOf validator anyOf json) *>
+  maybeCheck schemaObj.oneOf (fun oneOf => validateOneOf validator oneOf json)
+
+partial def validate (schema: Schema) (json : Json) : ValidationError :=
+  match schema with
+  | Boolean b => if b then fine else reportError "Boolean schema 'false' rejects all values" json
+  | Object schemaObj => validateObject validate schemaObj json
