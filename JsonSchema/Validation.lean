@@ -193,6 +193,22 @@ def validateNot (validator: Schema → Json → ValidationError) (schema: Schema
   | .ok _ => reportError s!"not: expected schema to NOT match but it did" json
   | .error _ => fine
 
+def validateContains (validator: Schema → Json → ValidationError) (schema: Schema) (json: Json) : ValidationError :=
+  match json with
+  | .arr elements =>
+    if elements.isEmpty then
+      reportError s!"contains: array is empty, expected at least one matching element" json
+    else
+      let hasMatch := elements.any fun elem =>
+        match validator schema elem with
+        | .ok _ => true
+        | .error _ => false
+      if hasMatch then
+        fine
+      else
+        reportError s!"contains: no array elements matched the schema" json
+  | _ => fine  -- contains only applies to arrays
+
 def validateProperties (validator: Schema → Json → ValidationError) (properties : Array (String × Schema)) (json : Json) : ValidationError :=
   properties.foldlM (init := ()) fun _ (propName, propSchema) =>
     match json.getObjVal? propName with
@@ -227,6 +243,7 @@ def validateObject (validator: Schema → Json → ValidationError) (schemaObj: 
   boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
   maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
   maybeCheck schemaObj.items (fun items => validateItems validator items json) *>
+  maybeCheck schemaObj.contains (fun containsSchema => validateContains validator containsSchema json) *>
   maybeCheck schemaObj.allOf (fun allOf => validateAllOf validator allOf json) *>
   maybeCheck schemaObj.anyOf (fun anyOf => validateAnyOf validator anyOf json) *>
   maybeCheck schemaObj.oneOf (fun oneOf => validateOneOf validator oneOf json) *>

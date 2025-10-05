@@ -106,7 +106,19 @@ The core implementation is divided into the following modules:
   - [x] allOf
   - [x] anyOf
   - [x] oneOf
+  - [x] not
+  - [x] items
+  - [x] contains
   - [ ] properties
+  - [ ] pattern
+  - [ ] additionalItems
   - [ ] additionalProperties
-  - [ ] not
+  - [ ] patternProperties
+  - [ ] propertyNames
+  - [ ] dependencies
+  - [ ] maxItems
+  - [ ] minItems
+  - [ ] maxProperties
+  - [ ] minProperties
   - [ ] if / then / else
+  - [ ] $ref / $id / definitions

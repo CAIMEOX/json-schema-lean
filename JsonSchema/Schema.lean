@@ -67,6 +67,7 @@ mutual
     properties : Option (Array (String × Schema))
 
     items : Option ItemsSchema
+    contains : Option Schema
 
     allOf : Option (Array Schema)
     anyOf : Option (Array Schema)
@@ -225,6 +226,12 @@ def parseNot (j : Json) : Except String (Option Json) := do
     | Except.ok j => Except.ok (some j)
     | Except.error _ => Except.ok none
 
+def parseContains (j : Json) : Except String (Option Json) := do
+  let c := j.getObjVal? "contains"
+  match c with
+    | Except.ok j => Except.ok (some j)
+    | Except.error _ => Except.ok none
+
 partial def schemaFromJson (j : Json) : Except String Schema := do
   match j with
   | Json.bool b => Except.ok (Schema.Boolean b)
@@ -284,6 +291,12 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
         Except.ok (some parsed)
       | none => Except.ok none
 
+    let contains <- match (<- parseContains j) with
+      | some containsJson => do
+        let parsed <- schemaFromJson containsJson
+        Except.ok (some parsed)
+      | none => Except.ok none
+
     Except.ok (Schema.Object {
       type,
       const,
@@ -299,6 +312,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       required,
       properties,
       items,
+      contains,
       allOf,
       anyOf,
       oneOf,
