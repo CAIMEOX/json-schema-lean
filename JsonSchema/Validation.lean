@@ -106,6 +106,22 @@ def validateUniqueItems (json : Json) : ValidationError :=
       else fine
   | _ => fine
 
+def validateMaxItems (maxItems: Nat) (json : Json) : ValidationError :=
+  match json with
+  | Json.arr array =>
+    if array.size <= maxItems
+      then fine
+      else reportError s!"Array has too many items, max is {maxItems}, got {array.size}" json
+  | _ => fine
+
+def validateMinItems (minItems: Nat) (json : Json) : ValidationError :=
+  match json with
+  | Json.arr array =>
+    if array.size >= minItems
+      then fine
+      else reportError s!"Array has too few items, min is {minItems}, got {array.size}" json
+  | _ => fine
+
 def validateRequired (required: Array String) (json : Json) : ValidationError :=
   match json with
   | Json.obj _ =>
@@ -243,6 +259,8 @@ def validateObject (validator: Schema → Json → ValidationError) (schemaObj: 
   boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
   maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
   maybeCheck schemaObj.items (fun items => validateItems validator items json) *>
+  maybeCheck schemaObj.maxItems (fun maxItems => validateMaxItems maxItems json) *>
+  maybeCheck schemaObj.minItems (fun minItems => validateMinItems minItems json) *>
   maybeCheck schemaObj.contains (fun containsSchema => validateContains validator containsSchema json) *>
   maybeCheck schemaObj.allOf (fun allOf => validateAllOf validator allOf json) *>
   maybeCheck schemaObj.anyOf (fun anyOf => validateAnyOf validator anyOf json) *>

@@ -109,6 +109,8 @@ The core implementation is divided into the following modules:
   - [x] not
   - [x] items
   - [x] contains
+  - [x] maxItems
+  - [x] minItems
   - [ ] properties
   - [ ] pattern
   - [ ] additionalItems
@@ -116,8 +118,6 @@ The core implementation is divided into the following modules:
   - [ ] patternProperties
   - [ ] propertyNames
   - [ ] dependencies
-  - [ ] maxItems
-  - [ ] minItems
   - [ ] maxProperties
   - [ ] minProperties
   - [ ] if / then / else

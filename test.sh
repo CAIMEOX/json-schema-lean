@@ -28,6 +28,8 @@ run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tes
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/oneOf.json
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/not.json
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/contains.json
+run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/maxItems.json
+run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/minItems.json
 
 if [ $FAILED -eq 1 ]; then
     echo "Some tests failed!" >&2
