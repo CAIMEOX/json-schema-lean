@@ -271,6 +271,45 @@ def validateAdditionalItems (validator: Schema → Json → ValidationError) (it
     | _ => fine  -- additionalItems is ignored when items is a single schema or not present
   | _ => fine
 
+def validateDependencies (validator: Schema → Json → ValidationError) (dependencies : Array (String × DependencySchema)) (json : Json) : ValidationError :=
+  match json with
+  | Json.obj objMap =>
+    dependencies.foldlM (init := ()) fun _ (propName, depSchema) =>
+      -- Check if the property exists in the object
+      if objMap.contains propName then
+        match depSchema with
+        | DependencySchema.PropertyDep requiredProps =>
+          -- Property dependencies: all required properties must exist
+          requiredProps.foldlM (init := ()) fun _ reqProp =>
+            if objMap.contains reqProp then
+              fine
+            else
+              reportError s!"Property '{propName}' requires property '{reqProp}' to be present" json
+        | DependencySchema.SchemaDep schema =>
+          -- Schema dependencies: validate the whole object against the schema
+          validator schema json
+      else
+        fine  -- Property doesn't exist, so dependency doesn't apply
+  | _ => fine  -- dependencies only apply to objects
+
+def validateIfThenElse (validator: Schema → Json → ValidationError) (ifSchema : Option Schema) (thenSchema : Option Schema) (elseSchema : Option Schema) (json : Json) : ValidationError :=
+  match ifSchema with
+  | some ifSch =>
+    -- Test if the data validates against the "if" schema
+    let ifResult := validator ifSch json
+    match ifResult with
+    | Except.ok _ =>
+      -- If validation succeeded, apply "then" schema if present
+      match thenSchema with
+      | some thenSch => validator thenSch json
+      | none => fine
+    | Except.error _ =>
+      -- If validation failed, apply "else" schema if present
+      match elseSchema with
+      | some elseSch => validator elseSch json
+      | none => fine
+  | none => fine  -- No "if" schema, nothing to do
+
 def validateObject (validator: Schema → Json → ValidationError) (schemaObj: SchemaObject) (json: Json) : ValidationError := do
   validateTypes schemaObj.type json *>
   maybeCheck schemaObj.const (validateConst json) *>
@@ -287,6 +326,7 @@ def validateObject (validator: Schema → Json → ValidationError) (schemaObj: 
   maybeCheck schemaObj.minProperties (fun minProperties => validateMinProperties minProperties json) *>
   boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
   maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
+  maybeCheck schemaObj.dependencies (fun dependencies => validateDependencies validator dependencies json) *>
   maybeCheck schemaObj.items (fun items => validateItems validator items json) *>
   maybeCheck schemaObj.additionalItems (fun additionalItems => validateAdditionalItems validator schemaObj.items additionalItems json) *>
   maybeCheck schemaObj.maxItems (fun maxItems => validateMaxItems maxItems json) *>
@@ -295,7 +335,8 @@ def validateObject (validator: Schema → Json → ValidationError) (schemaObj: 
   maybeCheck schemaObj.allOf (fun allOf => validateAllOf validator allOf json) *>
   maybeCheck schemaObj.anyOf (fun anyOf => validateAnyOf validator anyOf json) *>
   maybeCheck schemaObj.oneOf (fun oneOf => validateOneOf validator oneOf json) *>
-  maybeCheck schemaObj.not (fun notSchema => validateNot validator notSchema json)
+  maybeCheck schemaObj.not (fun notSchema => validateNot validator notSchema json) *>
+  validateIfThenElse validator schemaObj.ifSchema schemaObj.thenSchema schemaObj.elseSchema json
 
 partial def validate (schema: Schema) (json : Json) : ValidationError :=
   match schema with

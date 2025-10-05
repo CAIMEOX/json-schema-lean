@@ -47,6 +47,10 @@ mutual
     | Single : Schema → ItemsSchema
     | Tuple : Array Schema → ItemsSchema
 
+  inductive DependencySchema where
+    | PropertyDep : Array String → DependencySchema
+    | SchemaDep : Schema → DependencySchema
+
   structure SchemaObject where
     type : Array JsonType
     const : Option Json
@@ -67,6 +71,7 @@ mutual
     properties : Option (Array (String × Schema))
     maxProperties : Option Nat
     minProperties : Option Nat
+    dependencies : Option (Array (String × DependencySchema))
 
     items : Option ItemsSchema
     additionalItems : Option Schema
@@ -78,6 +83,10 @@ mutual
     anyOf : Option (Array Schema)
     oneOf : Option (Array Schema)
     not : Option Schema
+
+    ifSchema : Option Schema
+    thenSchema : Option Schema
+    elseSchema : Option Schema
 end
 
 def parseRequired (j : Json) : Except String $ Option $ Array String := do
@@ -224,6 +233,23 @@ def parseMinProperties (j : Json) : Except String (Option Nat) := do
       Except.ok (some i.toFloat.toUInt64.toNat)
     | Except.error _ => Except.ok none
 
+def parseDependencies (j : Json) : Except String (Option (Array (String × (Sum (Array String) Json)))) := do
+  let c := j.getObjVal? "dependencies"
+  match c with
+    | Except.ok depJson => do
+      let obj <- depJson.getObj?
+      let deps <- obj.foldlM (init := #[]) fun acc key val => do
+        match val with
+        | .arr array => do
+          -- Property dependencies (array of strings)
+          let strings <- array.mapM (fromJson? : Json → Except String String)
+          Except.ok (acc.push (key, Sum.inl strings))
+        | _ =>
+          -- Schema dependencies (schema object)
+          Except.ok (acc.push (key, Sum.inr val))
+      Except.ok (some deps)
+    | Except.error _ => Except.ok none
+
 def parseAllOf (j : Json) : Except String (Option (Array Json)) := do
   let c := j.getObjVal? "allOf"
   match c with
@@ -269,6 +295,24 @@ def parseNot (j : Json) : Except String (Option Json) := do
     | Except.ok j => Except.ok (some j)
     | Except.error _ => Except.ok none
 
+def parseIf (j : Json) : Except String (Option Json) := do
+  let c := j.getObjVal? "if"
+  match c with
+    | Except.ok j => Except.ok (some j)
+    | Except.error _ => Except.ok none
+
+def parseThen (j : Json) : Except String (Option Json) := do
+  let c := j.getObjVal? "then"
+  match c with
+    | Except.ok j => Except.ok (some j)
+    | Except.error _ => Except.ok none
+
+def parseElse (j : Json) : Except String (Option Json) := do
+  let c := j.getObjVal? "else"
+  match c with
+    | Except.ok j => Except.ok (some j)
+    | Except.error _ => Except.ok none
+
 def parseContains (j : Json) : Except String (Option Json) := do
   let c := j.getObjVal? "contains"
   match c with
@@ -302,6 +346,20 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
         let parsed <- props.mapM fun (key, val) => do
           let schema <- schemaFromJson val
           Except.ok (key, schema)
+        Except.ok (some parsed)
+      | none => Except.ok none
+
+    let dependencies <- match (<- parseDependencies j) with
+      | some deps => do
+        let parsed <- deps.mapM fun (key, val) => do
+          match val with
+          | Sum.inl propNames =>
+            -- Property dependencies - just keep the array of strings
+            Except.ok (key, DependencySchema.PropertyDep propNames)
+          | Sum.inr schemaJson => do
+            -- Schema dependencies - parse the schema
+            let schema <- schemaFromJson schemaJson
+            Except.ok (key, DependencySchema.SchemaDep schema)
         Except.ok (some parsed)
       | none => Except.ok none
 
@@ -344,6 +402,24 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
         Except.ok (some parsed)
       | none => Except.ok none
 
+    let ifSchema <- match (<- parseIf j) with
+      | some ifJson => do
+        let parsed <- schemaFromJson ifJson
+        Except.ok (some parsed)
+      | none => Except.ok none
+
+    let thenSchema <- match (<- parseThen j) with
+      | some thenJson => do
+        let parsed <- schemaFromJson thenJson
+        Except.ok (some parsed)
+      | none => Except.ok none
+
+    let elseSchema <- match (<- parseElse j) with
+      | some elseJson => do
+        let parsed <- schemaFromJson elseJson
+        Except.ok (some parsed)
+      | none => Except.ok none
+
     let contains <- match (<- parseContains j) with
       | some containsJson => do
         let parsed <- schemaFromJson containsJson
@@ -366,6 +442,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       properties,
       maxProperties,
       minProperties,
+      dependencies,
       items,
       additionalItems,
       maxItems,
@@ -374,7 +451,10 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       allOf,
       anyOf,
       oneOf,
-      not
+      not,
+      ifSchema,
+      thenSchema,
+      elseSchema
     })
 
 instance : FromJson Schema where

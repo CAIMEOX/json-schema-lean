@@ -119,6 +119,6 @@ The core implementation is divided into the following modules:
   - [ ] additionalProperties
   - [ ] patternProperties
   - [ ] propertyNames
-  - [ ] dependencies
-  - [ ] if / then / else
+  - [x] dependencies
+  - [x] if / then / else
   - [ ] $ref / $id / definitions
