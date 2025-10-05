@@ -2,7 +2,7 @@
 
 ## Description
 
-An implementation of JSON Schema in Lean (GSoC 2024)
+An implementation of JSON Schema Draft 7 in Lean (GSoC 2024)
 
 ## Build
 
@@ -12,10 +12,12 @@ Build docker image
 docker build -f Dockerfile -t localhost/lean-jsonschema .
 ```
 
+Install [bowtie](https://docs.bowtie.report/en/stable/).
+
 Run tests
 
 ```sh
-bowtie run --dialect 7 -i localhost/lean-jsonschema:latest
+./test.sh
 ```
 
 ## Design
@@ -47,7 +49,7 @@ Project Structure:
 │   ├── Schema.lean
 │   └── Validation.lean
 ├── JsonSchema.lean
-├── lakefile.lean
+├── lakefile.toml
 ├── lake-manifest.json
 ├── lean-toolchain
 ├── Main.lean

@@ -92,9 +92,13 @@ def validateEnum (enum: Array Json) (json : Json) : ValidationError :=
 def validateUniqueItems (json : Json) : ValidationError :=
   match json with
   | Json.arr array =>
-    if array.all (fun a => array.all (fun b => a == b || a != b))
-      then fine
-      else reportError s!"Array has duplicate items: " json
+    -- Check if all items are unique by verifying no item appears more than once
+    let hasDuplicates := array.any (fun item =>
+      (array.filter (· == item)).size > 1
+    )
+    if hasDuplicates
+      then reportError s!"Array has duplicate items: " json
+      else fine
   | _ => fine
 
 def validateRequired (required: Array String) (json : Json) : ValidationError :=
@@ -151,10 +155,8 @@ def maybeCheck {α : Type} (arg: Option α) (f: α -> ValidationError) : Validat
   | none => fine
   | some a => f a
 
-def boolCheck (arg: Option Bool) (f: Bool -> ValidationError) : ValidationError :=
-  match arg with
-  | none => fine
-  | some a => f a
+def boolCheck (arg: Bool) (f: Unit -> ValidationError) : ValidationError :=
+  if arg then f () else fine
 
 def validate (schema: Schema) (json : Json) : ValidationError := do
   validateTypes schema.type json *>
