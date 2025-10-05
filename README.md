@@ -111,6 +111,8 @@ The core implementation is divided into the following modules:
   - [x] contains
   - [x] maxItems
   - [x] minItems
+  - [x] maxProperties
+  - [x] minProperties
   - [ ] properties
   - [ ] pattern
   - [ ] additionalItems
@@ -118,7 +120,5 @@ The core implementation is divided into the following modules:
   - [ ] patternProperties
   - [ ] propertyNames
   - [ ] dependencies
-  - [ ] maxProperties
-  - [ ] minProperties
   - [ ] if / then / else
   - [ ] $ref / $id / definitions

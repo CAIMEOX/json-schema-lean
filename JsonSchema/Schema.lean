@@ -65,6 +65,8 @@ mutual
 
     required : Option (Array String)
     properties : Option (Array (String × Schema))
+    maxProperties : Option Nat
+    minProperties : Option Nat
 
     items : Option ItemsSchema
     maxItems : Option Nat
@@ -205,6 +207,22 @@ def parseProperties (j : Json) : Except String (Option (Array (String × Json)))
       Except.ok (some props)
     | Except.error _ => Except.ok none
 
+def parseMaxProperties (j : Json) : Except String (Option Nat) := do
+  let c := j.getObjVal? "maxProperties"
+  match c with
+    | Except.ok j => do
+      let i <- j.getNum?
+      Except.ok (some i.toFloat.toUInt64.toNat)
+    | Except.error _ => Except.ok none
+
+def parseMinProperties (j : Json) : Except String (Option Nat) := do
+  let c := j.getObjVal? "minProperties"
+  match c with
+    | Except.ok j => do
+      let i <- j.getNum?
+      Except.ok (some i.toFloat.toUInt64.toNat)
+    | Except.error _ => Except.ok none
+
 def parseAllOf (j : Json) : Except String (Option (Array Json)) := do
   let c := j.getObjVal? "allOf"
   match c with
@@ -268,6 +286,8 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
     let exclusiveMaximum <- parseExclusiveMaximum j
     let exclusiveMinimum <- parseExclusiveMinimum j
     let required <- parseRequired j
+    let maxProperties <- parseMaxProperties j
+    let minProperties <- parseMinProperties j
 
     -- Recursively parse the schema JSON values
     let properties <- match (<- parseProperties j) with
@@ -331,6 +351,8 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       uniqueItems,
       required,
       properties,
+      maxProperties,
+      minProperties,
       items,
       maxItems,
       minItems,

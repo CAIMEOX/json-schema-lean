@@ -130,6 +130,22 @@ def validateRequired (required: Array String) (json : Json) : ValidationError :=
       else reportError s!"Object is missing required fields: {required}, got " json
   | _ => fine
 
+def validateMaxProperties (maxProperties: Nat) (json : Json) : ValidationError :=
+  match json with
+  | Json.obj objMap =>
+    if objMap.size <= maxProperties
+      then fine
+      else reportError s!"Object has too many properties, max is {maxProperties}, got {objMap.size}" json
+  | _ => fine
+
+def validateMinProperties (minProperties: Nat) (json : Json) : ValidationError :=
+  match json with
+  | Json.obj objMap =>
+    if objMap.size >= minProperties
+      then fine
+      else reportError s!"Object has too few properties, min is {minProperties}, got {objMap.size}" json
+  | _ => fine
+
 def validateTypeSingle (typ: JsonType) (json : Json) : ValidationError :=
   match typ with
   | .StringType =>
@@ -256,6 +272,8 @@ def validateObject (validator: Schema → Json → ValidationError) (schemaObj: 
   maybeCheck schemaObj.multipleOf (fun t => validateMultipleOf t json) *>
   maybeCheck schemaObj.enum (fun t => validateEnum t json) *>
   maybeCheck schemaObj.required (fun t => validateRequired t json) *>
+  maybeCheck schemaObj.maxProperties (fun maxProperties => validateMaxProperties maxProperties json) *>
+  maybeCheck schemaObj.minProperties (fun minProperties => validateMinProperties minProperties json) *>
   boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
   maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
   maybeCheck schemaObj.items (fun items => validateItems validator items json) *>
