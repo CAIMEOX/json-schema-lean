@@ -115,7 +115,7 @@ def TestSkipped.default (seq: Nat) : TestSkipped := {
   message := "",
 }
 
-def meta : StartResponse := {
+def metadata : StartResponse := {
   version := 1,
   implementation := {
     name := "jsonschema-lean",

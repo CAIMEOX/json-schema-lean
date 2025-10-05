@@ -15,10 +15,10 @@ partial def jsonSchemaEq : Json -> Json -> Bool
     a == b
   | obj a,  obj b =>
     let _ : BEq Json := ⟨jsonSchemaEq⟩
-    let szA := a.fold (init := 0) (fun a _ _ => a + 1)
-    let szB := b.fold (init := 0) (fun a _ _ => a + 1)
+    let szA := a.foldl (init := 0) (fun a _ _ => a + 1)
+    let szB := b.foldl (init := 0) (fun a _ _ => a + 1)
     szA == szB && a.all fun field fa =>
-      match b.find compare field with
+      match b.get? field with
       | none    => false
       | some fb => fa == fb
   | _,      _      => false

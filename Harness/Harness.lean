@@ -29,7 +29,7 @@ def dispatch (s: String) : Except String String := do
   let j : Json <- Json.parse s
   let cmd : String <- j.getObjVal? "cmd" >>= Json.getStr?
   match cmd with
-    | "start" => Except.ok (Lean.toJson meta).compress
+    | "start" => Except.ok (Lean.toJson metadata).compress
     | "dialect" =>
       let j : DialectResponse := { ok := true }
       Except.ok (Lean.toJson j).compress

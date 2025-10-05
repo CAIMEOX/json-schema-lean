@@ -1,0 +1,12 @@
+name = "«json-schema»"
+defaultTargets = ["bowtie"]
+
+[[lean_lib]]
+name = "JsonSchema"
+
+[[lean_lib]]
+name = "Harness"
+
+[[lean_exe]]
+name = "bowtie"
+root = "Main"
