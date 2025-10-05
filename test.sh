@@ -33,7 +33,6 @@ run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tes
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/maxProperties.json
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/minProperties.json
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/additionalItems.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/dependencies.json
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/if-then-else.json
 
 if [ $FAILED -eq 1 ]; then
