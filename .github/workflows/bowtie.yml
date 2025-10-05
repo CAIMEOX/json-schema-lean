@@ -1,0 +1,28 @@
+name: JSON Schema Tests (Bowtie)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  bowtie-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Install Bowtie
+      run: |
+        pipx install bowtie-json-schema
+    
+    - name: Build Docker image
+      run: |
+        docker build -t localhost/lean-jsonschema:latest .
+    
+    - name: Run Bowtie tests
+      run: |
+        bash test.sh
