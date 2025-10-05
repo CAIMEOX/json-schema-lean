@@ -32,6 +32,7 @@ run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tes
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/minItems.json
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/maxProperties.json
 run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/minProperties.json
+run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/additionalItems.json
 
 if [ $FAILED -eq 1 ]; then
     echo "Some tests failed!" >&2

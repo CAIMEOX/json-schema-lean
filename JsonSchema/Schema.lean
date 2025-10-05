@@ -69,6 +69,7 @@ mutual
     minProperties : Option Nat
 
     items : Option ItemsSchema
+    additionalItems : Option Schema
     maxItems : Option Nat
     minItems : Option Nat
     contains : Option Schema
@@ -256,6 +257,12 @@ def parseItems (j : Json) : Except String (Option (Sum Json (Array Json))) := do
       | _ => Except.ok (.some (.inl j))
     | Except.error _ => Except.ok none
 
+def parseAdditionalItems (j : Json) : Except String (Option Json) := do
+  let c := j.getObjVal? "additionalItems"
+  match c with
+    | Except.ok j => Except.ok (some j)
+    | Except.error _ => Except.ok none
+
 def parseNot (j : Json) : Except String (Option Json) := do
   let c := j.getObjVal? "not"
   match c with
@@ -319,6 +326,12 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
           Except.ok (some (ItemsSchema.Tuple parsed))
       | none => Except.ok none
 
+    let additionalItems <- match (<- parseAdditionalItems j) with
+      | some additionalItemsJson => do
+        let parsed <- schemaFromJson additionalItemsJson
+        Except.ok (some parsed)
+      | none => Except.ok none
+
     let oneOf <- match (<- parseOneOf j) with
       | some schemas => do
         let parsed <- schemas.mapM schemaFromJson
@@ -354,6 +367,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       maxProperties,
       minProperties,
       items,
+      additionalItems,
       maxItems,
       minItems,
       contains,

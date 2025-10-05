@@ -115,7 +115,7 @@ The core implementation is divided into the following modules:
   - [x] minProperties
   - [ ] properties
   - [ ] pattern
-  - [ ] additionalItems
+  - [x] additionalItems
   - [ ] additionalProperties
   - [ ] patternProperties
   - [ ] propertyNames

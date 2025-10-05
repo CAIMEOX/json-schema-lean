@@ -260,6 +260,17 @@ def validateItems (validator: Schema → Json → ValidationError) (items : Item
       paired.foldlM (init := ()) fun _ (item, schema) => validator schema item
   | _ => fine
 
+def validateAdditionalItems (validator: Schema → Json → ValidationError) (itemsOpt : Option ItemsSchema) (additionalItems : Schema) (json : Json) : ValidationError :=
+  match json with
+  | Json.arr array =>
+    match itemsOpt with
+    | some (ItemsSchema.Tuple schemas) =>
+      -- Validate elements beyond the tuple length
+      let extraElements := array.extract schemas.size array.size
+      extraElements.foldlM (init := ()) fun _ item => validator additionalItems item
+    | _ => fine  -- additionalItems is ignored when items is a single schema or not present
+  | _ => fine
+
 def validateObject (validator: Schema → Json → ValidationError) (schemaObj: SchemaObject) (json: Json) : ValidationError := do
   validateTypes schemaObj.type json *>
   maybeCheck schemaObj.const (validateConst json) *>
@@ -277,6 +288,7 @@ def validateObject (validator: Schema → Json → ValidationError) (schemaObj: 
   boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
   maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
   maybeCheck schemaObj.items (fun items => validateItems validator items json) *>
+  maybeCheck schemaObj.additionalItems (fun additionalItems => validateAdditionalItems validator schemaObj.items additionalItems json) *>
   maybeCheck schemaObj.maxItems (fun maxItems => validateMaxItems maxItems json) *>
   maybeCheck schemaObj.minItems (fun minItems => validateMinItems minItems json) *>
   maybeCheck schemaObj.contains (fun containsSchema => validateContains validator containsSchema json) *>
