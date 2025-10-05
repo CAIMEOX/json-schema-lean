@@ -158,7 +158,7 @@ def maybeCheck {α : Type} (arg: Option α) (f: α -> ValidationError) : Validat
 def boolCheck (arg: Bool) (f: Unit -> ValidationError) : ValidationError :=
   if arg then f () else fine
 
-def validate (schema: Schema) (json : Json) : ValidationError := do
+partial def validate (schema: Schema) (json : Json) : ValidationError := do
   validateTypes schema.type json *>
   maybeCheck schema.const (validateConst json) *>
   maybeCheck schema.maxLength (fun t => validateMaxLength t json) *>
@@ -170,4 +170,11 @@ def validate (schema: Schema) (json : Json) : ValidationError := do
   maybeCheck schema.multipleOf (fun t => validateMultipleOf t json) *>
   maybeCheck schema.enum (fun t => validateEnum t json) *>
   maybeCheck schema.required (fun t => validateRequired t json) *>
-  boolCheck schema.uniqueItems (fun _ => validateUniqueItems json)
+  boolCheck schema.uniqueItems (fun _ => validateUniqueItems json) *>
+  maybeCheck schema.properties (fun properties => validateProperties properties json)
+where
+  validateProperties (properties : Array (String × Schema)) (json : Json) : ValidationError :=
+    properties.foldlM (init := ()) fun _ (propName, propSchema) =>
+      match json.getObjVal? propName with
+      | .ok propValue => validate propSchema propValue
+      | .error _ => fine

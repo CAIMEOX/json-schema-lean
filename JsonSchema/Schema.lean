@@ -24,18 +24,7 @@ instance : ToString JsonType where
     | JsonType.NullType => "null"
     | JsonType.AnyType => "any"
 
-abbrev JsonType.asType (jt: JsonType) : Type :=
-  match jt with
-    | JsonType.StringType => String
-    | JsonType.NumberType => Float
-    | JsonType.IntegerType => Int
-    | JsonType.BooleanType => Bool
-    | JsonType.ObjectType => Json
-    | JsonType.NullType => Unit
-    | JsonType.ArrayType => Array JsonType
-    | JsonType.AnyType => Json
-
-open JsonType
+open JsonType in
 instance : FromJson JsonType where
   fromJson? j := match j with
     | Json.str "string" => Except.ok StringType
@@ -47,18 +36,8 @@ instance : FromJson JsonType where
     | Json.str "null" => Except.ok NullType
     | Json.str "any" => Except.ok AnyType
     | Json.str _ => Except.error "not a valid type"
-    | _ => Except.error "not a stirng"
+    | _ => Except.error "not a string"
 
-inductive SchemaType where
-  | string (s: String): SchemaType
-  | number (n : Float) : SchemaType
-  | boolean (b : Bool) : SchemaType
-  | array (a : Array SchemaType) : SchemaType
-  | object (o : List (String × SchemaType)) : SchemaType
-  | null : SchemaType
-  deriving BEq, Repr
-
--- JSON Schema (Draft 3) Core Schema Definition
 structure Schema where
   type : Array JsonType
   const : Option Json
@@ -76,6 +55,7 @@ structure Schema where
   uniqueItems : Bool
 
   required : Option (Array String)
+  properties : Option (Array (String × Schema))
 
 def parseRequired (j : Json) : Except String $ Option $ Array String := do
   let c := j.getObjVal? "required"
@@ -97,9 +77,9 @@ def parseType (j : Json) : Except String (Array JsonType) := do
       | Json.arr a => do
         let b <- a.mapM (fromJson?)
         Except.ok b
-      | _ => Except.ok #[AnyType]
+      | _ => Except.ok #[JsonType.AnyType]
     | Except.error _ =>
-      Except.ok #[AnyType]
+      Except.ok #[JsonType.AnyType]
 
 def parseConst (j : Json) : Except String (Option Json) := do
   let c := j.getObjVal? "const"
@@ -179,31 +159,54 @@ def parseUniqueItems (j : Json) : Except String Bool := do
       Except.ok i
     | Except.error _ => Except.ok false
 
+def parseProperties (j : Json) : Except String (Option (Array (String × Json))) := do
+  let c := j.getObjVal? "properties"
+  match c with
+    | Except.ok propJson => do
+      let obj <- propJson.getObj?
+      let props <- obj.foldlM (init := #[]) fun acc key val => do
+        Except.ok (acc.push (key, val))
+      Except.ok (some props)
+    | Except.error _ => Except.ok none
+
+partial def schemaFromJson (j : Json) : Except String Schema := do
+  let type <- parseType j
+  let const <- parseConst j
+  let maxLength <- parseMaxLength j
+  let minLength <- parseMinLength j
+  let maximum <- parseMaximum j
+  let minimum <- parseMinimum j
+  let multipleOf <- parseMultipleOf j
+  let enum <- parseEnum j
+  let uniqueItems <- parseUniqueItems j
+  let exclusiveMaximum <- parseExclusiveMaximum j
+  let exclusiveMinimum <- parseExclusiveMinimum j
+  let required <- parseRequired j
+
+  -- Recursively parse the schema JSON values
+  let properties <- match (<- parseProperties j) with
+    | some props => do
+      let parsed <- props.mapM fun (key, val) => do
+        let schema <- schemaFromJson val
+        Except.ok (key, schema)
+      Except.ok (some parsed)
+    | none => Except.ok none
+
+  Except.ok {
+    type,
+    const,
+    enum,
+    maxLength,
+    minLength,
+    maximum,
+    minimum,
+    exclusiveMaximum,
+    exclusiveMinimum,
+    multipleOf,
+    uniqueItems,
+    required,
+    properties
+  }
+
 instance : FromJson Schema where
-  fromJson? j := do
-    let type <- parseType j
-    let const <- parseConst j
-    let maxLength <- parseMaxLength j
-    let minLength <- parseMinLength j
-    let maximum <- parseMaximum j
-    let minimum <- parseMinimum j
-    let multipleOf <- parseMultipleOf j
-    let enum <- parseEnum j
-    let uniqueItems <- parseUniqueItems j
-    let exclusiveMaximum <- parseExclusiveMaximum j
-    let exclusiveMinimum <- parseExclusiveMinimum j
-    let required <- parseRequired j
-    Except.ok {
-      type,
-      const,
-      enum,
-      maxLength,
-      minLength,
-      maximum,
-      minimum,
-      exclusiveMaximum,
-      exclusiveMinimum,
-      multipleOf,
-      uniqueItems,
-      required
-    }
+  fromJson? := schemaFromJson
