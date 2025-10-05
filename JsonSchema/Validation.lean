@@ -193,6 +193,19 @@ def validateProperties (validator: Schema → Json → ValidationError) (propert
     | .ok propValue => validator propSchema propValue
     | .error _ => fine
 
+def validateItems (validator: Schema → Json → ValidationError) (items : ItemsSchema) (json : Json) : ValidationError :=
+  match json with
+  | Json.arr array =>
+    match items with
+    | ItemsSchema.Single schema =>
+      -- Validate all array elements against the same schema
+      array.foldlM (init := ()) fun _ item => validator schema item
+    | ItemsSchema.Tuple schemas =>
+      -- Validate each array element against corresponding schema (tuple validation)
+      let paired := Array.zipWith (fun item schema => (item, schema)) array schemas
+      paired.foldlM (init := ()) fun _ (item, schema) => validator schema item
+  | _ => fine
+
 def validateObject (validator: Schema → Json → ValidationError) (schemaObj: SchemaObject) (json: Json) : ValidationError := do
   validateTypes schemaObj.type json *>
   maybeCheck schemaObj.const (validateConst json) *>
@@ -207,6 +220,7 @@ def validateObject (validator: Schema → Json → ValidationError) (schemaObj: 
   maybeCheck schemaObj.required (fun t => validateRequired t json) *>
   boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
   maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
+  maybeCheck schemaObj.items (fun items => validateItems validator items json) *>
   maybeCheck schemaObj.allOf (fun allOf => validateAllOf validator allOf json) *>
   maybeCheck schemaObj.anyOf (fun anyOf => validateAnyOf validator anyOf json) *>
   maybeCheck schemaObj.oneOf (fun oneOf => validateOneOf validator oneOf json)

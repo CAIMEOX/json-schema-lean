@@ -43,6 +43,10 @@ mutual
     | Boolean : Bool → Schema
     | Object : SchemaObject → Schema
 
+  inductive ItemsSchema where
+    | Single : Schema → ItemsSchema
+    | Tuple : Array Schema → ItemsSchema
+
   structure SchemaObject where
     type : Array JsonType
     const : Option Json
@@ -61,6 +65,8 @@ mutual
 
     required : Option (Array String)
     properties : Option (Array (String × Schema))
+
+    items : Option ItemsSchema
 
     allOf : Option (Array Schema)
     anyOf : Option (Array Schema)
@@ -203,6 +209,15 @@ def parseOneOf (j : Json) : Except String (Option (Array Json)) := do
       Except.ok (some arr)
     | Except.error _ => Except.ok none
 
+def parseItems (j : Json) : Except String (Option (Sum Json (Array Json))) := do
+  let c := j.getObjVal? "items"
+  match c with
+    | Except.ok j =>
+      match j with
+      | .arr ar => Except.ok (.some (.inr ar))
+      | _ => Except.ok (.some (.inl j))
+    | Except.error _ => Except.ok none
+
 partial def schemaFromJson (j : Json) : Except String Schema := do
   match j with
   | Json.bool b => Except.ok (Schema.Boolean b)
@@ -241,6 +256,15 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
         Except.ok (some parsed)
       | none => Except.ok none
 
+    let items <- match (<- parseItems j) with
+      | some (.inl j) =>
+          let parsed <- schemaFromJson j
+          Except.ok (some (ItemsSchema.Single parsed))
+      | some (.inr array) => do
+          let parsed <- array.mapM schemaFromJson
+          Except.ok (some (ItemsSchema.Tuple parsed))
+      | none => Except.ok none
+
     let oneOf <- match (<- parseOneOf j) with
       | some schemas => do
         let parsed <- schemas.mapM schemaFromJson
@@ -261,6 +285,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       uniqueItems,
       required,
       properties,
+      items,
       allOf,
       anyOf,
       oneOf
