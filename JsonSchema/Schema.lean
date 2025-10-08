@@ -52,6 +52,8 @@ mutual
     | SchemaDep : Schema → DependencySchema
 
   structure SchemaObject where
+    --id : Option String
+    --ref : Option String -- Should this be a URI? No it could be a fragment
     type : Array JsonType
     const : Option Json
     enum : Option $ Array Json
@@ -87,6 +89,8 @@ mutual
     ifSchema : Option Schema
     thenSchema : Option Schema
     elseSchema : Option Schema
+
+    --definitions : Option (Std.TreeMap.Raw String Schema)
 end
 
 -- Helper function to parse an optional field with a transformation
@@ -106,10 +110,6 @@ def parseNat (j : Json) : Except String Nat := do
 def parseFloat (j : Json) : Except String Float := do
   let i <- j.getNum?
   Except.ok i.toFloat
-
--- Helper to parse an optional schema field
-def parseOptionalSchema (parser : Json → Except String Schema) (j : Json) (fieldName : String) : Except String (Option Schema) :=
-  parseOptionalField j fieldName parser
 
 -- Helper to parse an array of schemas
 def parseSchemaArray (parser : Json → Except String Schema) (j : Json) (fieldName : String) : Except String (Option (Array Schema)) := do
@@ -140,33 +140,6 @@ def parseType (j : Json) : Except String (Array JsonType) := do
     | Except.error _ =>
       Except.ok #[JsonType.AnyType]
 
-def parseConst (j : Json) : Except String (Option Json) :=
-  parseOptionalField j "const" Except.ok
-
-def parseEnum (j : Json) : Except String (Option $ Array Json) :=
-  parseOptionalField j "enum" (fun val => val.getArr?)
-
-def parseMaxLength (j : Json) : Except String (Option Nat) :=
-  parseOptionalField j "maxLength" parseNat
-
-def parseMinLength (j : Json) : Except String (Option Nat) :=
-  parseOptionalField j "minLength" parseNat
-
-def parseMaximum (j : Json) : Except String (Option Float) :=
-  parseOptionalField j "maximum" parseFloat
-
-def parseMinimum (j : Json) : Except String (Option Float) :=
-  parseOptionalField j "minimum" parseFloat
-
-def parseExclusiveMaximum (j : Json) : Except String (Option Float) :=
-  parseOptionalField j "exclusiveMaximum" parseFloat
-
-def parseExclusiveMinimum (j : Json) : Except String (Option Float) :=
-  parseOptionalField j "exclusiveMinimum" parseFloat
-
-def parseMultipleOf (j : Json) : Except String (Option Float) :=
-  parseOptionalField j "multipleOf" parseFloat
-
 def parseUniqueItems (j : Json) : Except String Bool := do
   let c := j.getObjVal? "uniqueItems"
   match c with
@@ -174,12 +147,6 @@ def parseUniqueItems (j : Json) : Except String Bool := do
       let i <- j.getBool?
       Except.ok i
     | Except.error _ => Except.ok false
-
-def parseMaxItems (j : Json) : Except String (Option Nat) :=
-  parseOptionalField j "maxItems" parseNat
-
-def parseMinItems (j : Json) : Except String (Option Nat) :=
-  parseOptionalField j "minItems" parseNat
 
 def parseProperties (parser : Json → Except String Schema) (j : Json) : Except String (Option (Array (String × Schema))) := do
   match j.getObjVal? "properties" with
@@ -190,12 +157,6 @@ def parseProperties (parser : Json → Except String Schema) (j : Json) : Except
         Except.ok (acc.push (key, schema))
       Except.ok (some props)
     | Except.error _ => Except.ok none
-
-def parseMaxProperties (j : Json) : Except String (Option Nat) :=
-  parseOptionalField j "maxProperties" parseNat
-
-def parseMinProperties (j : Json) : Except String (Option Nat) :=
-  parseOptionalField j "minProperties" parseNat
 
 def parseDependencies (parser : Json → Except String Schema) (j : Json) : Except String (Option (Array (String × DependencySchema))) := do
   match j.getObjVal? "dependencies" with
@@ -230,66 +191,39 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
   match j with
   | Json.bool b => Except.ok (Schema.Boolean b)
   | _ => do
-    let type <- parseType j
-    let const <- parseConst j
-    let maxLength <- parseMaxLength j
-    let minLength <- parseMinLength j
-    let maximum <- parseMaximum j
-    let minimum <- parseMinimum j
-    let multipleOf <- parseMultipleOf j
-    let enum <- parseEnum j
-    let uniqueItems <- parseUniqueItems j
-    let maxItems <- parseMaxItems j
-    let minItems <- parseMinItems j
-    let exclusiveMaximum <- parseExclusiveMaximum j
-    let exclusiveMinimum <- parseExclusiveMinimum j
-    let required <- parseRequired j
-    let maxProperties <- parseMaxProperties j
-    let minProperties <- parseMinProperties j
-
-    -- Parse schema values (these functions now handle the recursion)
-    let properties <- parseProperties schemaFromJson j
-    let dependencies <- parseDependencies schemaFromJson j
-    let allOf <- parseSchemaArray schemaFromJson j "allOf"
-    let anyOf <- parseSchemaArray schemaFromJson j "anyOf"
-    let items <- parseItems schemaFromJson j
-    let additionalItems <- parseOptionalSchema schemaFromJson j "additionalItems"
-    let oneOf <- parseSchemaArray schemaFromJson j "oneOf"
-    let not <- parseOptionalSchema schemaFromJson j "not"
-    let ifSchema <- parseOptionalSchema schemaFromJson j "if"
-    let thenSchema <- parseOptionalSchema schemaFromJson j "then"
-    let elseSchema <- parseOptionalSchema schemaFromJson j "else"
-    let contains <- parseOptionalSchema schemaFromJson j "contains"
-
     Except.ok (Schema.Object {
-      type,
-      const,
-      enum,
-      maxLength,
-      minLength,
-      maximum,
-      minimum,
-      exclusiveMaximum,
-      exclusiveMinimum,
-      multipleOf,
-      uniqueItems,
-      required,
-      properties,
-      maxProperties,
-      minProperties,
-      dependencies,
-      items,
-      additionalItems,
-      maxItems,
-      minItems,
-      contains,
-      allOf,
-      anyOf,
-      oneOf,
-      not,
-      ifSchema,
-      thenSchema,
-      elseSchema
+      type := ← parseType j
+      const := ← parseOptionalField j "const" Except.ok
+      enum := ← parseOptionalField j "enum" (fun val => val.getArr?)
+      /- Ordinary Optional Fields-/
+      maxLength := ← parseOptionalField j "maxLength" parseNat
+      minLength := ← parseOptionalField j "minLength" parseNat
+      maximum := ← parseOptionalField j "maximum" parseFloat
+      minimum := ← parseOptionalField j "minimum" parseFloat
+      exclusiveMaximum := ← parseOptionalField j "exclusiveMaximum" parseFloat
+      exclusiveMinimum := ← parseOptionalField j "exclusiveMinimum" parseFloat
+      multipleOf := ← parseOptionalField j "multipleOf" parseFloat
+      maxProperties := ← parseOptionalField j "maxProperties" parseNat
+      minProperties := ← parseOptionalField j "minProperties" parseNat
+      maxItems := ← parseOptionalField j "maxItems" parseNat
+      minItems := ← parseOptionalField j "minItems" parseNat
+      -- Required
+      required := ← parseRequired j
+      uniqueItems := ← parseUniqueItems j
+      -- Recursive Items
+      items := ← parseItems schemaFromJson j
+      properties := ← parseProperties schemaFromJson j
+      dependencies := ← parseDependencies schemaFromJson j
+      additionalItems := ← parseOptionalField j "additionalItems" schemaFromJson
+      contains := ← parseOptionalField j "contains" schemaFromJson
+      -- "Evil" schema dependencies that could cause infinite loops.
+      allOf := ← parseSchemaArray schemaFromJson j "allOf"
+      anyOf := ← parseSchemaArray schemaFromJson j "anyOf"
+      oneOf := ← parseSchemaArray schemaFromJson j "oneOf"
+      not := ← parseOptionalField j "not" schemaFromJson
+      ifSchema := ← parseOptionalField j "if" schemaFromJson
+      thenSchema := ← parseOptionalField j "then" schemaFromJson
+      elseSchema := ← parseOptionalField j "else" schemaFromJson
     })
 
 instance : FromJson Schema where
