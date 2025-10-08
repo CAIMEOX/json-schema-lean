@@ -15,14 +15,14 @@ inductive JsonType where
 
 instance : ToString JsonType where
   toString jt := match jt with
-    | JsonType.StringType => "string"
-    | JsonType.NumberType => "number"
-    | JsonType.IntegerType => "integer"
-    | JsonType.BooleanType => "boolean"
-    | JsonType.ObjectType => "object"
-    | JsonType.ArrayType => "array"
-    | JsonType.NullType => "null"
-    | JsonType.AnyType => "any"
+  | JsonType.StringType => "string"
+  | JsonType.NumberType => "number"
+  | JsonType.IntegerType => "integer"
+  | JsonType.BooleanType => "boolean"
+  | JsonType.ObjectType => "object"
+  | JsonType.ArrayType => "array"
+  | JsonType.NullType => "null"
+  | JsonType.AnyType => "any"
 
 open JsonType in
 instance : FromJson JsonType where
@@ -91,16 +91,16 @@ mutual
     thenSchema : Option Schema
     elseSchema : Option Schema
 
-    --definitions : Option (Std.TreeMap.Raw String Schema)
+    definitions : Option (Std.TreeMap.Raw String Schema)
 end
 
 -- Helper function to parse an optional field with a transformation
 def parseOptionalField (j : Json) (fieldName : String) (transform : Json → Except String α) : Except String (Option α) := do
   match j.getObjVal? fieldName with
-    | Except.ok val => do
-      let result <- transform val
-      Except.ok (some result)
-    | Except.error _ => Except.ok none
+  | Except.ok val => do
+    let result <- transform val
+    Except.ok (some result)
+  | Except.error _ => Except.ok none
 
 -- Helper for parsing numbers as Nat
 def parseNat (j : Json) : Except String Nat := do
@@ -129,64 +129,75 @@ def parseRequired (j : Json) : Except String $ Option $ Array String := do
 def parseType (j : Json) : Except String (Array JsonType) := do
   let t := j.getObjVal? "type"
   match t with
-    | Except.ok t =>
-      match t with
-      | Json.str _ => do
-        let t <- (fromJson? t)
-        Except.ok #[t]
-      | Json.arr a => do
-        let b <- a.mapM (fromJson?)
-        Except.ok b
-      | _ => Except.ok #[JsonType.AnyType]
-    | Except.error _ =>
+  | Except.ok t =>
+    match t with
+    | Json.str _ => do
+      let t <- (fromJson? t)
+      Except.ok #[t]
+    | Json.arr a => do
+      let b <- a.mapM (fromJson?)
+      Except.ok b
+    | _ => Except.ok #[JsonType.AnyType]
+  | Except.error _ =>
       Except.ok #[JsonType.AnyType]
 
 def parseUniqueItems (j : Json) : Except String Bool := do
   let c := j.getObjVal? "uniqueItems"
   match c with
-    | Except.ok j => do
-      let i <- j.getBool?
-      Except.ok i
-    | Except.error _ => Except.ok false
+  | Except.ok j => do
+    let i <- j.getBool?
+    Except.ok i
+  | Except.error _ => Except.ok false
 
 def parseProperties (parser : Json → Except String Schema) (j : Json) : Except String (Option (Array (String × Schema))) := do
   match j.getObjVal? "properties" with
-    | Except.ok propJson => do
-      let obj <- propJson.getObj?
-      let props <- obj.foldlM (init := #[]) fun acc key val => do
-        let schema <- parser val
-        Except.ok (acc.push (key, schema))
-      Except.ok (some props)
-    | Except.error _ => Except.ok none
+  | Except.ok propJson => do
+    let obj <- propJson.getObj?
+    let props <- obj.foldlM (init := #[]) fun acc key val => do
+      let schema <- parser val
+      Except.ok (acc.push (key, schema))
+    Except.ok (some props)
+  | Except.error _ => Except.ok none
 
 def parseDependencies (parser : Json → Except String Schema) (j : Json) : Except String (Option (Array (String × DependencySchema))) := do
   match j.getObjVal? "dependencies" with
-    | Except.ok depJson => do
-      let obj <- depJson.getObj?
-      let deps <- obj.foldlM (init := #[]) fun acc key val => do
-        match val with
-        | .arr array => do
-          -- Property dependencies (array of strings)
-          let strings <- array.mapM (fromJson? : Json → Except String String)
-          Except.ok (acc.push (key, DependencySchema.PropertyDep strings))
-        | _ => do
-          -- Schema dependencies (schema object)
-          let schema <- parser val
-          Except.ok (acc.push (key, DependencySchema.SchemaDep schema))
-      Except.ok (some deps)
-    | Except.error _ => Except.ok none
+  | Except.ok depJson => do
+    let obj <- depJson.getObj?
+    let deps <- obj.foldlM (init := #[]) fun acc key val => do
+      match val with
+      | .arr array => do
+        -- Property dependencies (array of strings)
+        let strings <- array.mapM (fromJson? : Json → Except String String)
+        Except.ok (acc.push (key, DependencySchema.PropertyDep strings))
+      | _ => do
+        -- Schema dependencies (schema object)
+        let schema <- parser val
+        Except.ok (acc.push (key, DependencySchema.SchemaDep schema))
+    Except.ok (some deps)
+  | Except.error _ => Except.ok none
 
 def parseItems (parser : Json → Except String Schema) (j : Json) : Except String (Option ItemsSchema) := do
   match j.getObjVal? "items" with
-    | Except.ok itemsJson =>
-      match itemsJson with
-      | .arr ar => do
-        let schemas <- ar.mapM parser
-        Except.ok (.some (ItemsSchema.Tuple schemas))
-      | _ => do
-        let schema <- parser itemsJson
-        Except.ok (.some (ItemsSchema.Single schema))
-    | Except.error _ => Except.ok none
+  | Except.ok itemsJson =>
+    match itemsJson with
+    | .arr ar => do
+      let schemas <- ar.mapM parser
+      Except.ok (.some (ItemsSchema.Tuple schemas))
+    | _ => do
+      let schema <- parser itemsJson
+      Except.ok (.some (ItemsSchema.Single schema))
+  | Except.error _ => Except.ok none
+
+def parseDefinitions (parser : Json → Except String Schema) (j : Json) :
+    Except String (Option (Std.TreeMap.Raw String Schema)) :=
+  match j.getObjVal? "definitions" with
+  | Except.ok definitionJson => do
+    let obj ← definitionJson.getObj?
+    let defs ← obj.foldlM (init := Std.TreeMap.Raw.empty) fun acc key val => do
+      let schema ← parser val
+      Except.ok (acc.insert key schema)
+    return .some defs
+  | Except.error _ => Except.ok none
 
 partial def schemaFromJson (j : Json) : Except String Schema := do
   match j with
@@ -218,6 +229,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       dependencies := ← parseDependencies schemaFromJson j
       additionalItems := ← parseOptionalField j "additionalItems" schemaFromJson
       contains := ← parseOptionalField j "contains" schemaFromJson
+      definitions := ← parseDefinitions schemaFromJson j
       -- "Evil" schema dependencies that could cause infinite loops.
       allOf := ← parseSchemaArray schemaFromJson j "allOf"
       anyOf := ← parseSchemaArray schemaFromJson j "anyOf"
