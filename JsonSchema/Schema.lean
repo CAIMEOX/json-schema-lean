@@ -53,7 +53,7 @@ mutual
 
   structure SchemaObject where
     id : Option String
-    --ref : Option String -- Should this be a URI? No it could be a fragment
+    ref : Option String -- Should this be a URI? No it could be a fragment
     --definitions : Option (Std.TreeMap.Raw String Schema)
     type : Array JsonType
     const : Option Json
@@ -194,6 +194,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
   | _ => do
     Except.ok (Schema.Object {
       id := ← parseOptionalField j "$id" (fun val => val.getStr?)
+      ref := ← parseOptionalField j "$ref" (fun val => val.getStr?)
       type := ← parseType j
       const := ← parseOptionalField j "const" Except.ok
       enum := ← parseOptionalField j "enum" (fun val => val.getArr?)
