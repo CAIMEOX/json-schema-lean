@@ -52,8 +52,9 @@ mutual
     | SchemaDep : Schema → DependencySchema
 
   structure SchemaObject where
-    --id : Option String
+    id : Option String
     --ref : Option String -- Should this be a URI? No it could be a fragment
+    --definitions : Option (Std.TreeMap.Raw String Schema)
     type : Array JsonType
     const : Option Json
     enum : Option $ Array Json
@@ -192,9 +193,12 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
   | Json.bool b => Except.ok (Schema.Boolean b)
   | _ => do
     Except.ok (Schema.Object {
+      id := ← parseOptionalField j "$id" (fun val => val.getStr?)
       type := ← parseType j
       const := ← parseOptionalField j "const" Except.ok
       enum := ← parseOptionalField j "enum" (fun val => val.getArr?)
+      required := ← parseRequired j
+      uniqueItems := ← parseUniqueItems j
       /- Ordinary Optional Fields-/
       maxLength := ← parseOptionalField j "maxLength" parseNat
       minLength := ← parseOptionalField j "minLength" parseNat
@@ -207,10 +211,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       minProperties := ← parseOptionalField j "minProperties" parseNat
       maxItems := ← parseOptionalField j "maxItems" parseNat
       minItems := ← parseOptionalField j "minItems" parseNat
-      -- Required
-      required := ← parseRequired j
-      uniqueItems := ← parseUniqueItems j
-      -- Recursive Items
+      -- Recursive Fields
       items := ← parseItems schemaFromJson j
       properties := ← parseProperties schemaFromJson j
       dependencies := ← parseDependencies schemaFromJson j
