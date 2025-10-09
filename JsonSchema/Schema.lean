@@ -1,4 +1,5 @@
 import Lean.Data.Json
+import LeanUri
 
 open Lean
 open Json
@@ -11,7 +12,7 @@ inductive JsonType where
   | ArrayType
   | NullType
   | AnyType
-  deriving BEq, Repr
+  deriving Inhabited, BEq, Repr
 
 instance : ToString JsonType where
   toString jt := match jt with
@@ -42,6 +43,7 @@ mutual
   inductive Schema where
     | Boolean : Bool → Schema
     | Object : SchemaObject → Schema
+  deriving Inhabited
 
   inductive ItemsSchema where
     | Single : Schema → ItemsSchema
@@ -52,8 +54,8 @@ mutual
     | SchemaDep : Schema → DependencySchema
 
   structure SchemaObject where
-    id : Option String
-    ref : Option String -- Should this be a URI? No it could be a fragment
+    id : Option (LeanUri.URI ⊕ LeanUri.RelativeRef)
+    ref : Option (LeanUri.URI ⊕ LeanUri.RelativeRef)
     --definitions : Option (Std.TreeMap.Raw String Schema)
     type : Array JsonType
     const : Option Json
@@ -93,6 +95,77 @@ mutual
 
     definitions : Option (Std.TreeMap.Raw String Schema)
 end
+
+open JsonType
+
+def Lean.Json.fromFloat (x : Float) : Json :=
+  match JsonNumber.fromFloat? x with
+  | .inl s => Json.str s
+  | .inr f => Json.num f
+
+def urirefToString (r : LeanUri.URI ⊕ LeanUri.RelativeRef) : String :=
+  match r with
+  | .inl uri => toString uri
+  | .inr ref => toString ref
+
+partial def schemaToJson (s : Schema) : Json :=
+  match s with
+  | Schema.Boolean b => Json.bool b
+  | Schema.Object o => Id.run do
+    let mut fields : List (String × Json) := []
+    if let some id := o.id then fields := ("$id", Json.str (urirefToString id)) :: fields
+    if let some ref := o.ref then fields := ("$ref", Json.str (urirefToString ref)) :: fields
+    if o.type != #[] then
+      if o.type.size == 1 then
+        fields := ("type", Json.str (toString o.type[0]!)) :: fields
+      else
+        fields := ("type", Json.arr (o.type.map (fun t => Json.str (toString t)))) :: fields
+    if let some c := o.const then fields := ("const", c) :: fields
+    if let some e := o.enum then fields := ("enum", Json.arr e) :: fields
+    if let some n := o.maxLength then fields := ("maxLength", Json.num n) :: fields
+    if let some n := o.minLength then fields := ("minLength", Json.num n) :: fields
+    if let some n := o.maximum then fields := ("maximum", Json.fromFloat n) :: fields
+    if let some n := o.minimum then fields := ("minimum", Json.fromFloat n) :: fields
+    if let some n := o.exclusiveMaximum then fields := ("exclusiveMaximum", Json.fromFloat n) :: fields
+    if let some n := o.exclusiveMinimum then fields := ("exclusiveMinimum", Json.fromFloat n) :: fields
+    if let some n := o.multipleOf then fields := ("multipleOf", Json.fromFloat n) :: fields
+    if o.uniqueItems then fields := ("uniqueItems", Json.bool true) :: fields
+    if let some req := o.required then fields := ("required", Json.arr (req.map Json.str)) :: fields
+    if let some props := o.properties then
+      let object := props.foldl (init := Std.TreeMap.Raw.empty) fun acc (k, v) => acc.insert k (schemaToJson v)
+      fields := ("properties", Json.obj object) :: fields
+    if let some n := o.maxProperties then fields := ("maxProperties", Json.num n) :: fields
+    if let some n := o.minProperties then fields := ("minProperties", Json.num n) :: fields
+    if let some deps := o.dependencies then
+      let obj := deps.foldl (init := Std.TreeMap.Raw.empty) fun acc (k, v) =>
+        let j := match v with
+          | DependencySchema.PropertyDep array => Json.arr (array.map Json.str)
+          | DependencySchema.SchemaDep s => schemaToJson s
+        acc.insert k j
+      fields := ("dependencies", Json.obj obj) :: fields
+    if let some items := o.items then
+      let j := match items with
+        | ItemsSchema.Single s => schemaToJson s
+        | ItemsSchema.Tuple array => Json.arr (array.map schemaToJson)
+      fields := ("items", j) :: fields
+    if let some s := o.additionalItems then fields := ("additionalItems", schemaToJson s) :: fields
+    if let some n := o.maxItems then fields := ("maxItems", Json.num n) :: fields
+    if let some n := o.minItems then fields := ("minItems", Json.num n) :: fields
+    if let some s := o.contains then fields := ("contains", schemaToJson s) :: fields
+    if let some array := o.allOf then fields := ("allOf", Json.arr (array.map schemaToJson)) :: fields
+    if let some array := o.anyOf then fields := ("anyOf", Json.arr (array.map schemaToJson)) :: fields
+    if let some array := o.oneOf then fields := ("oneOf", Json.arr (array.map schemaToJson)) :: fields
+    if let some s := o.not then fields := ("not", schemaToJson s) :: fields
+    if let some s := o.ifSchema then fields := ("if", schemaToJson s) :: fields
+    if let some s := o.thenSchema then fields := ("then", schemaToJson s) :: fields
+    if let some s := o.elseSchema then fields := ("else", schemaToJson s) :: fields
+    if let some defs := o.definitions then
+      let obj := defs.foldl (init := Std.TreeMap.Raw.empty) fun acc k v => acc.insert k (schemaToJson v)
+      fields := ("definitions", Json.obj obj) :: fields
+    Json.obj (Std.TreeMap.Raw.insertMany {} fields)
+
+instance : ToString Schema where
+  toString s := (schemaToJson s).compress
 
 -- Helper function to parse an optional field with a transformation
 def parseOptionalField (j : Json) (fieldName : String) (transform : Json → Except String α) : Except String (Option α) := do
@@ -204,8 +277,10 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
   | Json.bool b => Except.ok (Schema.Boolean b)
   | _ => do
     Except.ok (Schema.Object {
-      id := ← parseOptionalField j "$id" (fun val => val.getStr?)
-      ref := ← parseOptionalField j "$ref" (fun val => val.getStr?)
+      id := ← parseOptionalField j "$id" (fun val => val.getStr? >>=
+        LeanUri.parseReference)
+      ref := ← parseOptionalField j "$ref" (fun val => val.getStr? >>=
+        LeanUri.parseReference)
       type := ← parseType j
       const := ← parseOptionalField j "const" Except.ok
       enum := ← parseOptionalField j "enum" (fun val => val.getArr?)

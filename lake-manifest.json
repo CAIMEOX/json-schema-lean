@@ -1,7 +1,12 @@
-{
-  "version": 7,
-  "packagesDir": ".lake/packages",
-  "packages": [],
-  "name": "«json-schema»",
-  "lakeDir": ".lake"
-}
+{"version": "1.1.0",
+ "packagesDir": ".lake/packages",
+ "packages":
+ [{"type": "path",
+   "scope": "",
+   "name": "«lean-uri»",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "dir": "../lean-uri",
+   "configFile": "lakefile.toml"}],
+ "name": "«json-schema»",
+ "lakeDir": ".lake"}

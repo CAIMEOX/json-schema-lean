@@ -7,6 +7,10 @@ name = "JsonSchema"
 [[lean_lib]]
 name = "Harness"
 
+[[require]]
+name = "lean-uri"
+path = "../lean-uri"
+
 [[lean_exe]]
 name = "bowtie"
 root = "Main"
