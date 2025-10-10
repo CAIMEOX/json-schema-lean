@@ -69,12 +69,6 @@ only after registering all paths so resolution can occur.
 open Lean
 open LeanUri
 
-def schemaString : String := include_str "example_definition.json"
-
-def schemaJson : Json := (Json.parse schemaString).toOption.get!
-
-def schema : Schema := (schemaFromJson schemaJson).toOption.get!
-
 def pathToFragment (xs : List String) : String :=
   String.join (xs.map (fun x => "/definitions/" ++ x))
 
@@ -101,18 +95,16 @@ def Schema.getDefinition? (schema : Schema) (key : String) : Option Schema :=
   | Schema.Boolean _ => none
   | Schema.Object o => o.definitions >>= (Std.TreeMap.Raw.get? · key)
 
-def Resolver.addSchema (r : Resolver) (schema : Schema) (baseURI : URI := default)
+def Resolver.addRootSchema (r : Resolver) (schema : Schema) (baseURI : URI := default)
     : Resolver :=
   { r with
-    rootSchemas := r.rootSchemas.insert (
-      (schema.getID? baseURI).getD baseURI
-    ) schema }
+    rootSchemas := r.rootSchemas.insert baseURI schema }
 
 def Resolver.addPath (r : Resolver) (key : URI) (baseURI : URI) (path : List String) :=
   { r with registeredPaths := r.registeredPaths.insert key (baseURI, path) }
 
 partial def Resolver.registerPaths (r : Resolver) (schema : Schema) (rootURI : URI := default)
-    (pathStack : List String) : Resolver :=
+    (pathStack : List String := []) : Resolver :=
   schema.getDefinitions.foldl (init :=
     if let some id := schema.getID? rootURI then
       r.addPath id rootURI pathStack.reverse
@@ -120,6 +112,10 @@ partial def Resolver.registerPaths (r : Resolver) (schema : Schema) (rootURI : U
   ) (fun r (key, definition) =>
     r.registerPaths definition rootURI (key::pathStack)
   )
+
+def Resolver.addSchema (r : Resolver) (schema : Schema) (baseURI : URI := default)
+    : Resolver :=
+  (r.addRootSchema schema baseURI).registerPaths schema baseURI
 
 def splitFragment (s : String) : List String :=
   s.splitOn "/definitions/" |>.filter (fun seg => seg != "")
@@ -148,6 +144,122 @@ def Resolver.getSchemaFromRoot? (r : Resolver) (uri : URI) (path : List String) 
 
 def Resolver.getSchema? (r : Resolver) (uri : URI) : Option Schema :=
   r.resolvePath uri >>= (fun (base, path) => r.getSchemaFromRoot? base path)
+
+partial def Schema.getEvilRefs (s : Schema) : Array (URI ⊕ RelativeRef) :=
+  match s with
+  | Schema.Boolean _ => #[]
+  | Schema.Object o => Id.run do
+    let allOf := (Array.flatMap (·.getEvilRefs) <$> o.allOf).getD #[]
+    let anyOf := (Array.flatMap (·.getEvilRefs) <$> o.anyOf).getD #[]
+    let oneOf := (Array.flatMap (·.getEvilRefs) <$> o.oneOf).getD #[]
+    let not := ((·.getEvilRefs) <$> o.not).getD #[]
+    let ifRefs := ((·.getEvilRefs) <$> o.ifSchema).getD #[]
+    let thenRefs := ((·.getEvilRefs) <$> o.thenSchema).getD #[]
+    let elseRefs := ((·.getEvilRefs) <$> o.elseSchema).getD #[]
+    let refs := match o.ref with
+      | .some ref => #[ref]
+      | .none => #[]
+    return allOf ++ anyOf ++ oneOf ++ not ++
+      ifRefs ++ thenRefs ++ elseRefs ++ refs
+
+abbrev ResolverGraph := Std.TreeMap String (List String)
+
+def fullPath (rootURI : URI) (pathStack : List String) : String :=
+  toString rootURI ++ "#" ++ pathToFragment pathStack
+
+def ResolverGraph.addOneSchema (graph : ResolverGraph) (r : Resolver) (schema : Schema)
+    (rootURI : URI) (pathStack : List String) : ResolverGraph := Id.run do
+  let mut acc := graph
+  let key := fullPath rootURI pathStack.reverse
+  acc := acc.insert key []
+  for ref in schema.getEvilRefs do
+    let value := r.resolvePath (rootURI.resolveURIorRef ref)
+    acc := acc.modify key (.cons (fullPath.uncurry value))
+  acc
+
+partial def ResolverGraph.addSchema (graph : ResolverGraph) (r : Resolver) (schema : Schema)
+    (rootURI : URI) (pathStack : List String := []) : ResolverGraph :=
+  schema.getDefinitions.foldl (init :=
+    graph.addOneSchema r schema rootURI pathStack
+  ) (fun g (key, definition) =>
+    g.addSchema r definition rootURI (key::pathStack)
+  )
+
+def ResolverGraph.fromResolver (r : Resolver) : ResolverGraph := Id.run do
+  let mut graph : ResolverGraph := Std.TreeMap.empty
+  for (rootURI, schema) in r.rootSchemas.toList do
+    graph := graph.addSchema r schema rootURI
+  graph
+
+
+inductive VisitStatus where
+  | unvisited
+  | processing
+  | processed
+  deriving BEq
+
+inductive StackOptions where
+  | candidate (parent : String)
+  | postorder
+  deriving BEq
+
+structure DFSState where
+  visited : Std.HashMap String VisitStatus
+  stack : List (StackOptions × String)
+  parents : Std.HashMap String String
+  loop : Option (String × String)
+
+partial def ResolverGraph.dfsAtV (g : ResolverGraph) (state : DFSState) : DFSState :=
+  match state.stack with
+  | [] => state -- Yay, we're done
+  | (option, v)::vs =>
+    match option with
+    | .candidate parent => match state.visited.getD v VisitStatus.processed with
+      | .processed => g.dfsAtV { state with stack := vs } -- We move on
+      | .processing => -- We've found a loop starting at v -> parent
+        { state with loop := some (v, parent) }
+      | .unvisited =>
+        let edges := (g.getD v []).map (.candidate v, ·)
+        g.dfsAtV { state with
+          visited := state.visited.insert v .processing
+          parents := state.parents.insert v parent
+          stack := edges ++ [(.postorder, v)] ++ vs
+        }
+    | .postorder => g.dfsAtV { state with
+      stack := vs
+      visited := state.visited.insert v .processed
+    }
+
+partial def getCycleReversed (parents : Std.HashMap String String) (head tail : String) (path : List String := []) :=
+  if head == tail then head::path else
+    getCycleReversed parents head (parents.getD tail head) (tail::path)
+
+
+def ResolverGraph.dfs (g : ResolverGraph) : Option (List String) := Id.run do
+  let mut state : DFSState := {
+    visited := g.keys.foldl (init := .emptyWithCapacity) fun visited key =>
+      visited.insert key .unvisited
+    stack := []
+    parents := .emptyWithCapacity
+    loop := none
+  }
+
+  for i in g.keys do
+    if state.visited.getD i .processed == .processed then
+      continue
+    state := g.dfsAtV { state with stack := [(.candidate i, i)] }
+    if let some (head, tail) := state.loop then
+      return getCycleReversed state.parents head tail
+
+  return none
+
+/-! # Tests! -/
+
+def schemaString : String := include_str "example_definition.json"
+
+def schemaJson : Json := (Json.parse schemaString).toOption.get!
+
+def schema : Schema := (schemaFromJson schemaJson).toOption.get!
 
 
 /-- info: true -/
@@ -271,3 +383,36 @@ def Resolver.getSchema? (r : Resolver) (uri : URI) : Option Schema :=
   let r := Resolver.addSchema {} schema base;
   -- Should not resolve to a definition
   (r.getSchema? uri).isNone
+
+def schemaString2 : String := include_str "bad_definition.json"
+
+def schemaJson2 : Json := (Json.parse schemaString2).toOption.get!
+
+def schema2 : Schema := (schemaFromJson schemaJson2).toOption.get!
+
+/-- info: 3 -/
+#guard_msgs in
+#eval
+  let uri := (URI.parse "http://example.com/root.json").toOption.get!;
+  let r := Resolver.addSchema {} schema2 uri
+  let g : ResolverGraph := Std.TreeMap.empty
+  --schema2.getPath? ["A"] <&> (g.addOneSchema r · uri ["A"])
+  (g.addSchema r schema2 uri).size
+
+/--
+info: some ["http://example.com/root.json#/definitions/A", "http://example.com/root.json#/definitions/B"]
+-/
+#guard_msgs in
+#eval
+  let uri := (URI.parse "http://example.com/root.json").toOption.get!;
+  let r := Resolver.addSchema {} schema2 uri
+  let g : ResolverGraph := .fromResolver r
+  g.dfs
+
+/-- info: none -/
+#guard_msgs in
+#eval
+  let uri := (URI.parse "http://example.com/root.json").toOption.get!;
+  let r := Resolver.addSchema {} schema uri
+  let g : ResolverGraph := Std.TreeMap.empty
+  (g.addSchema r schema uri).dfs
