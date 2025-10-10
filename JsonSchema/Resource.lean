@@ -101,7 +101,7 @@ def Resolver.addRootSchema (r : Resolver) (schema : Schema) (baseURI : URI := de
     rootSchemas := r.rootSchemas.insert baseURI schema }
 
 def Resolver.addPath (r : Resolver) (key : URI) (baseURI : URI) (path : List String) :=
-  { r with registeredPaths := r.registeredPaths.insert key (baseURI, path) }
+  { r with registeredPaths := r.registeredPaths.insert key.normalize (baseURI, path) }
 
 partial def Resolver.registerPaths (r : Resolver) (schema : Schema) (rootURI : URI := default)
     (pathStack : List String := []) : Resolver :=
@@ -124,6 +124,7 @@ def getFragmentPath (uri : URI) : List String :=
   (splitFragment <$> uri.getFragment).getD []
 
 def Resolver.resolvePath (r : Resolver) (uri : URI) : URI × List String :=
+  let uri := uri.normalize -- Make sure to normalize
   -- First, we check the map:
   if let some uri_and_path := r.registeredPaths[uri]? then
     uri_and_path
