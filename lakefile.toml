@@ -1,5 +1,7 @@
 name = "«json-schema»"
+version = "0.1.0"
 defaultTargets = ["bowtie"]
+testDriver = "testJsonSchema"
 
 [[lean_lib]]
 name = "JsonSchema"
@@ -7,10 +9,18 @@ name = "JsonSchema"
 [[lean_lib]]
 name = "Harness"
 
+[[lean_lib]]
+name = "JsonSchemaTesting"
+
 [[require]]
 name = "lean-uri"
-path = "../lean-uri"
+git = "https://github.com/josephmckinsey/lean-uri"
+rev = "main"
 
 [[lean_exe]]
 name = "bowtie"
 root = "Main"
+
+[[lean_exe]]
+name = "testJsonSchema"
+root = "TestRunner"

@@ -1,12 +1,15 @@
 {"version": "1.1.0",
  "packagesDir": ".lake/packages",
  "packages":
- [{"type": "path",
+ [{"url": "https://github.com/josephmckinsey/lean-uri",
+   "type": "git",
+   "subDir": null,
    "scope": "",
+   "rev": "3ecbf353b998158f2804e993f96ffe6673221e18",
    "name": "«lean-uri»",
    "manifestFile": "lake-manifest.json",
+   "inputRev": "main",
    "inherited": false,
-   "dir": "../lean-uri",
    "configFile": "lakefile.toml"}],
  "name": "«json-schema»",
  "lakeDir": ".lake"}
