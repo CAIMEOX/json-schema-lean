@@ -317,3 +317,20 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
 
 instance : FromJson Schema where
   fromJson? := schemaFromJson
+
+open LeanUri in
+def Schema.getID? (schema : Schema) (baseURI : URI) : Option URI :=
+  match schema with
+  | Schema.Boolean _ => none
+  | Schema.Object o => baseURI.resolveURIorRef <$> o.id
+
+/- If theree are no definitions, then return [] -/
+def Schema.getDefinitions (schema : Schema) : List (String × Schema) :=
+  match schema with
+  | Schema.Boolean _ => []
+  | Schema.Object o => (o.definitions <&> Std.TreeMap.Raw.toList).getD []
+
+def Schema.getDefinition? (schema : Schema) (key : String) : Option Schema :=
+  match schema with
+  | Schema.Boolean _ => none
+  | Schema.Object o => o.definitions >>= (Std.TreeMap.Raw.get? · key)

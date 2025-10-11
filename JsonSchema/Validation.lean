@@ -1,5 +1,6 @@
 import JsonSchema.Schema
 import JsonSchema.Error
+import JsonSchema.Resolving
 import Lean.Data.Json
 open Lean
 open Json
@@ -310,7 +311,18 @@ def validateIfThenElse (validator: Schema → Json → ValidationError) (ifSchem
       | none => fine
   | none => fine  -- No "if" schema, nothing to do
 
-def validateObject (validator: Schema → Json → ValidationError) (schemaObj: SchemaObject) (json: Json) : ValidationError := do
+def validateObject (resolver : Resolver) (baseURI : LeanUri.URI)
+    (fullValidator : Resolver → LeanUri.URI → Schema → Json → ValidationError)
+    (schemaObj: SchemaObject) (json: Json) : ValidationError := do
+  if let some uriOrRef := schemaObj.ref then
+    let (base, path) := resolver.resolvePath (baseURI.resolveURIorRef uriOrRef)
+    if let some (subschema, newURI) := resolver.getSchemaAndURI? base path then
+      fullValidator resolver newURI subschema json
+    else
+      reportError s!"Could not find {(base, path)}" json
+    return -- Early return for Draft 7 of Refs
+  let newBaseURI := ((Schema.Object schemaObj).getID? baseURI).getD baseURI
+  let validator := fullValidator resolver newBaseURI
   validateTypes schemaObj.type json *>
   maybeCheck schemaObj.const (validateConst json) *>
   maybeCheck schemaObj.maxLength (fun t => validateMaxLength t json) *>
@@ -338,7 +350,14 @@ def validateObject (validator: Schema → Json → ValidationError) (schemaObj: 
   maybeCheck schemaObj.not (fun notSchema => validateNot validator notSchema json) *>
   validateIfThenElse validator schemaObj.ifSchema schemaObj.thenSchema schemaObj.elseSchema json
 
-partial def validate (schema: Schema) (json : Json) : ValidationError :=
-  match schema with
-  | Boolean b => if b then fine else reportError "Boolean schema 'false' rejects all values" json
-  | Object schemaObj => validateObject validate schemaObj json
+def validateWithResolver (fuel : Nat := 1000) (resolver : Resolver) (rootURI : LeanUri.URI) (schema: Schema) (json : Json) : ValidationError :=
+  match fuel with
+  | .succ fuel =>
+      match schema with
+      | Boolean b => if b then fine else reportError "Boolean schema 'false' rejects all values" json
+      | Object schemaObj => validateObject resolver rootURI (validateWithResolver fuel) schemaObj json
+  | 0 => reportError s!"Stack overflow: {schema}" json
+
+def validate (schema: Schema) (json : Json) : ValidationError :=
+  let resolver := Resolver.addSchema {} schema default
+  validateWithResolver 1000 resolver default schema json

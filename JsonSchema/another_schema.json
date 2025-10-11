@@ -1,0 +1,13 @@
+{
+    "allOf": [
+        {
+            "$ref": "http://example.com/ref/if"
+        },
+        {
+            "if": {
+                "$id": "http://example.com/ref/if",
+                "type": "integer"
+            }
+        }
+    ]
+}

@@ -1,4 +1,5 @@
 import JsonSchema.Schema
+import JsonSchema.SchemaPointer
 
 /-! # Resolving Definitions in Schemas
 
@@ -69,31 +70,11 @@ only after registering all paths so resolution can occur.
 open Lean
 open LeanUri
 
-def pathToFragment (xs : List String) : String :=
-  String.join (xs.map (fun x => "/definitions/" ++ x))
-
 structure Resolver where
   rootSchemas : Std.HashMap URI Schema :=
     Std.HashMap.emptyWithCapacity
   registeredPaths : Std.HashMap URI (URI × List String) :=
     Std.HashMap.emptyWithCapacity
-
-
-def Schema.getID? (schema : Schema) (baseURI : URI) : Option URI :=
-  match schema with
-  | Schema.Boolean _ => none
-  | Schema.Object o => baseURI.resolveURIorRef <$> o.id
-
-/- If theree are no definitions, then return [] -/
-def Schema.getDefinitions (schema : Schema) : List (String × Schema) :=
-  match schema with
-  | Schema.Boolean _ => []
-  | Schema.Object o => (o.definitions <&> Std.TreeMap.Raw.toList).getD []
-
-def Schema.getDefinition? (schema : Schema) (key : String) : Option Schema :=
-  match schema with
-  | Schema.Boolean _ => none
-  | Schema.Object o => o.definitions >>= (Std.TreeMap.Raw.get? · key)
 
 def Resolver.addRootSchema (r : Resolver) (schema : Schema) (baseURI : URI := default)
     : Resolver :=
@@ -103,49 +84,116 @@ def Resolver.addRootSchema (r : Resolver) (schema : Schema) (baseURI : URI := de
 def Resolver.addPath (r : Resolver) (key : URI) (baseURI : URI) (path : List String) :=
   { r with registeredPaths := r.registeredPaths.insert key.normalize (baseURI, path) }
 
-partial def Resolver.registerPaths (r : Resolver) (schema : Schema) (rootURI : URI := default)
-    (pathStack : List String := []) : Resolver :=
-  schema.getDefinitions.foldl (init :=
-    if let some id := schema.getID? rootURI then
+def SchemaObject.foldDefinitions (o : SchemaObject) (f : α → String × Schema → α) (init : α) : α :=
+  ((o.definitions <&> Std.TreeMap.Raw.toList).getD []).foldl f init
+
+def SchemaObject.foldProperties (o : SchemaObject) (f : α → String × Schema → α) (init : α) : α :=
+  ((o.properties).getD #[]).foldl f init
+
+def SchemaObject.foldDependencies (o : SchemaObject) (f : α → String × Schema → α) (init : α) : α :=
+  let dependencySchemas : Option (Array (String × Schema)) := o.dependencies <&> fun xs =>
+    xs.filterMap (fun (name, dependencySchema) =>
+      match dependencySchema with
+      | DependencySchema.SchemaDep schema => some (name, schema)
+      | _ => none
+    )
+  (dependencySchemas.getD #[]).foldl f init
+
+def SchemaObject.foldItems (o : SchemaObject) (f : α → Schema × Nat → α)  (init : α) : α :=
+  let itemSchemas : Option (Array Schema) := o.items <&> fun itemschemas =>
+    match itemschemas with
+    | ItemsSchema.Single s => #[s]
+    | .Tuple xs => xs
+  (itemSchemas.getD #[]).zipIdx.foldl f init
+
+def SchemaObject.foldAllOf (o : SchemaObject) (f : α → Schema × Nat → α)  (init : α) : α :=
+  (o.allOf.getD #[]).zipIdx.foldl f init
+
+def SchemaObject.foldAnyOf (o : SchemaObject) (f : α → Schema × Nat → α)  (init : α) : α :=
+  (o.anyOf.getD #[]).zipIdx.foldl f init
+
+def SchemaObject.foldOneOf (o : SchemaObject) (f : α → Schema × Nat → α)  (init : α) : α :=
+  (o.oneOf.getD #[]).zipIdx.foldl f init
+
+-- I think this can be simplified...
+def Schema.foldStackAux (schema : Schema) (pathStack : List String) (baseURI : URI)
+    (f : α → Schema → List String → URI → α) (init : α) : α :=
+  let baseURI : URI := (schema.getID? baseURI).getD baseURI
+  match schema with
+  | Schema.Boolean _ => init
+  | Schema.Object o =>
+      let init : α := o.foldDefinitions (init := init) fun x (key, definition) =>
+        f x definition (key::"definitions"::pathStack) baseURI
+      let init : α := o.foldProperties (init := init) fun x (key, property) =>
+        f x property (key::"properties"::pathStack) baseURI
+      let init : α := o.foldDependencies (init := init) fun x (key, property) =>
+        f x property (key::"dependencies"::pathStack) baseURI
+      let init : α := o.foldItems (init := init) fun x (item, i) =>
+        f x item (toString i::"items"::pathStack) baseURI
+      let init : α := (o.additionalItems <&>
+        (f init · ("additionalItems"::pathStack) baseURI)).getD init
+      let init : α := (o.contains <&>
+        (f init · ("contains"::pathStack) baseURI)).getD init
+      let init : α := o.foldAllOf (init := init) fun x (allOf, i) =>
+        f x allOf (toString i::"allOf"::pathStack) baseURI
+      let init : α := o.foldAnyOf (init := init) fun x (anyOf, i) =>
+        f x anyOf (toString i::"anyOf"::pathStack) baseURI
+      let init : α := o.foldOneOf (init := init) fun x (oneOf, i) =>
+        f x oneOf (toString i::"oneOf"::pathStack) baseURI
+      let init : α := (o.not <&> (f init · ("not"::pathStack) baseURI)).getD init
+      let init : α := (o.ifSchema <&> (f init · ("if"::pathStack) baseURI)).getD init
+      let init : α := (o.thenSchema <&> (f init · ("then"::pathStack) baseURI)).getD init
+      let init : α := (o.elseSchema <&> (f init · ("else"::pathStack) baseURI)).getD init
+      init
+
+-- TODO: Termination should follow from fold attach logic: everything we fold over
+--  should have a smaller sizeOf.
+/-- Recursively does an inorder traversal of schema along all valid subschemas. Note
+  that the baseURI passed to f is the parents!
+-/
+partial def Schema.foldStack (schema : Schema) (pathStack : List String) (baseURI : URI)
+    (f : α → Schema → List String → URI → α) (init : α) : α:=
+  Schema.foldStackAux schema pathStack baseURI (init := f init schema pathStack baseURI)
+    fun x s path baseURI => s.foldStack path baseURI f (f x s path baseURI)
+
+def Resolver.registerPaths (r : Resolver) (schema : Schema) (rootURI : URI)
+    : Resolver :=
+  schema.foldStack [] rootURI (init := r) fun r schema pathStack baseURI =>
+    if let some id := schema.getID? baseURI then
       r.addPath id rootURI pathStack.reverse
     else r
-  ) (fun r (key, definition) =>
-    r.registerPaths definition rootURI (key::pathStack)
-  )
 
 def Resolver.addSchema (r : Resolver) (schema : Schema) (baseURI : URI := default)
     : Resolver :=
   (r.addRootSchema schema baseURI).registerPaths schema baseURI
 
-def splitFragment (s : String) : List String :=
-  s.splitOn "/definitions/" |>.filter (fun seg => seg != "")
+def getFragmentPath (uri : URI) : Option (List String) :=
+  match JsonPointer.parse <$> uri.getFragment with
+  | .some (.ok path) => .some path
+  | _ => none
 
-def getFragmentPath (uri : URI) : List String :=
-  (splitFragment <$> uri.getFragment).getD []
-
-def Resolver.resolvePath (r : Resolver) (uri : URI) : URI × List String :=
+partial def Resolver.resolvePath (r : Resolver) (uri : URI) : URI × List String :=
   let uri := uri.normalize -- Make sure to normalize
   -- First, we check the map:
-  if let some uri_and_path := r.registeredPaths[uri]? then
-    uri_and_path
+  if let some (uri, path) := r.registeredPaths[uri]? then
+    (uri, path)
+  else if let some fragmentPath := getFragmentPath uri then
+    let (uri, path) := r.resolvePath { uri with fragment := none }
+    (uri, path ++ fragmentPath)
   else
-    ({ uri with fragment := none }, getFragmentPath uri)
-
-def Schema.getPath? (s : Schema) (path : List String) : Option Schema :=
-  match path with
-  | [] => some s
-  | key::path =>
-    if let some definition := s.getDefinition? key then
-      definition.getPath? path
-    else
-      none
+    (uri, [])
 
 def Resolver.getSchemaFromRoot? (r : Resolver) (uri : URI) (path : List String) : Option Schema :=
-  r.rootSchemas.get? uri >>= (Schema.getPath? · path)
+  r.rootSchemas.get? uri >>= (·.navigate? path)
+
+def Resolver.getSchemaAndURI? (r : Resolver) (uri : URI) (path : List String) : Option (Schema × URI) :=
+  r.rootSchemas.get? uri >>= (·.navigateWithURI? path uri)
 
 def Resolver.getSchema? (r : Resolver) (uri : URI) : Option Schema :=
-  r.resolvePath uri >>= (fun (base, path) => r.getSchemaFromRoot? base path)
+  let (base, path) := r.resolvePath uri
+  r.getSchemaFromRoot? base path
 
+-- TODO: This is missing the evil `dependencies`
 partial def Schema.getEvilRefs (s : Schema) : Array (URI ⊕ RelativeRef) :=
   match s with
   | Schema.Boolean _ => #[]
@@ -166,7 +214,7 @@ partial def Schema.getEvilRefs (s : Schema) : Array (URI ⊕ RelativeRef) :=
 abbrev ResolverGraph := Std.TreeMap String (List String)
 
 def fullPath (rootURI : URI) (pathStack : List String) : String :=
-  toString rootURI ++ "#" ++ pathToFragment pathStack
+  toString rootURI ++ "#" ++ JsonPointer.toString pathStack
 
 def ResolverGraph.addOneSchema (graph : ResolverGraph) (r : Resolver) (schema : Schema)
     (rootURI : URI) (pathStack : List String) : ResolverGraph := Id.run do
@@ -183,7 +231,7 @@ partial def ResolverGraph.addSchema (graph : ResolverGraph) (r : Resolver) (sche
   schema.getDefinitions.foldl (init :=
     graph.addOneSchema r schema rootURI pathStack
   ) (fun g (key, definition) =>
-    g.addSchema r definition rootURI (key::pathStack)
+    g.addSchema r definition rootURI (key::"definitions"::pathStack)
   )
 
 def ResolverGraph.fromResolver (r : Resolver) : ResolverGraph := Id.run do
@@ -262,16 +310,15 @@ def schemaJson : Json := (Json.parse schemaString).toOption.get!
 
 def schema : Schema := (schemaFromJson schemaJson).toOption.get!
 
-
 /-- info: true -/
 #guard_msgs in
 #eval
   let uri := (URI.parse "http://example.com/root.json").toOption.get!;
   let r := Resolver.addSchema {} schema uri;
   -- Test registerPaths: should register all definitions
-  let r2 := r.registerPaths schema uri [];
+  let r2 := r.registerPaths schema uri;
   -- Should have registered at least one path (the root)
-  r2.registeredPaths.size > 0
+  r2.registeredPaths.size == 3
 
 /-- info: true -/
 #guard_msgs in
@@ -306,14 +353,8 @@ def schema : Schema := (schemaFromJson schemaJson).toOption.get!
 /-- info: true -/
 #guard_msgs in
 #eval
-  -- Test splitFragment and getFragmentPath
-  splitFragment "/definitions/foo/definitions/bar" = ["foo", "bar"]
-
-/-- info: true -/
-#guard_msgs in
-#eval
   let uri := (URI.parse "http://example.com/root.json#/definitions/foo/definitions/bar").toOption.get!;
-  getFragmentPath uri = ["foo", "bar"]
+  getFragmentPath uri == ["definitions", "foo", "definitions", "bar"]
 
 /-- info: true -/
 #guard_msgs in
@@ -322,7 +363,7 @@ def schema : Schema := (schemaFromJson schemaJson).toOption.get!
   let uri := (URI.parse "http://example.com/root.json#/definitions/foo").toOption.get!;
   let r : Resolver := {}
   let (base, path) := r.resolvePath uri;
-  base == { uri with fragment := none } && path == ["foo"]
+  base == { uri with fragment := none } && path == ["definitions", "foo"]
 
 /-- info: true -/
 #guard_msgs in
@@ -330,7 +371,7 @@ def schema : Schema := (schemaFromJson schemaJson).toOption.get!
   -- Test getPath? for a valid path
   let defs := schema.getDefinitions;
   match defs with
-  | (k, s)::_ => toString (schema.getPath? [k]) == toString (some s)
+  | (k, s)::_ => toString (schema.navigate? ["definitions", k]) == toString (some s)
   | _ => false
 
 /-- info: true -/
@@ -407,6 +448,7 @@ info: some ["http://example.com/root.json#/definitions/A", "http://example.com/r
 #eval
   let uri := (URI.parse "http://example.com/root.json").toOption.get!;
   let r := Resolver.addSchema {} schema2 uri
+  --r.registeredPaths
   let g : ResolverGraph := .fromResolver r
   g.dfs
 
