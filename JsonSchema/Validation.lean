@@ -248,6 +248,22 @@ def validateProperties (validator: Schema → Json → ValidationError) (propert
     | .ok propValue => validator propSchema propValue
     | .error _ => fine
 
+def validateAdditionalProperties (validator: Schema → Json → ValidationError) (properties : Option (Array (String × Schema))) (additionalProperties : Schema) (json : Json) : ValidationError :=
+  match json with
+  | Json.obj objMap =>
+    -- Get the set of property names defined in the schema
+    let definedProps := match properties with
+      | some props => props.map Prod.fst
+      | none => #[]
+    -- Validate each property that is NOT in the defined properties
+    objMap.foldlM (init := ()) fun _ propName propValue =>
+      if definedProps.contains propName then
+        fine  -- This property is defined, skip it
+      else
+        -- This is an additional property, validate it against the schema
+        validator additionalProperties propValue
+  | _ => fine  -- additionalProperties only applies to objects
+
 def validateItems (validator: Schema → Json → ValidationError) (items : ItemsSchema) (json : Json) : ValidationError :=
   match json with
   | Json.arr array =>
@@ -338,9 +354,12 @@ def validateObject (resolver : Resolver) (baseURI : LeanUri.URI)
   maybeCheck schemaObj.minProperties (fun minProperties => validateMinProperties minProperties json) *>
   boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
   maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
+  maybeCheck schemaObj.additionalProperties (fun additionalProperties =>
+    validateAdditionalProperties validator schemaObj.properties additionalProperties json) *>
   maybeCheck schemaObj.dependencies (fun dependencies => validateDependencies validator dependencies json) *>
   maybeCheck schemaObj.items (fun items => validateItems validator items json) *>
-  maybeCheck schemaObj.additionalItems (fun additionalItems => validateAdditionalItems validator schemaObj.items additionalItems json) *>
+  maybeCheck schemaObj.additionalItems (fun additionalItems =>
+    validateAdditionalItems validator schemaObj.items additionalItems json) *>
   maybeCheck schemaObj.maxItems (fun maxItems => validateMaxItems maxItems json) *>
   maybeCheck schemaObj.minItems (fun minItems => validateMinItems minItems json) *>
   maybeCheck schemaObj.contains (fun containsSchema => validateContains validator containsSchema json) *>

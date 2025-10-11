@@ -74,6 +74,7 @@ mutual
 
     required : Option (Array String)
     properties : Option (Array (String × Schema))
+    additionalProperties : Option Schema
     maxProperties : Option Nat
     minProperties : Option Nat
     dependencies : Option (Array (String × DependencySchema))
@@ -134,6 +135,7 @@ partial def schemaToJson (s : Schema) : Json :=
     if let some props := o.properties then
       let object := props.foldl (init := Std.TreeMap.Raw.empty) fun acc (k, v) => acc.insert k (schemaToJson v)
       fields := ("properties", Json.obj object) :: fields
+    if let some s := o.additionalProperties then fields := ("additionalProperties", schemaToJson s) :: fields
     if let some n := o.maxProperties then fields := ("maxProperties", Json.num n) :: fields
     if let some n := o.minProperties then fields := ("minProperties", Json.num n) :: fields
     if let some deps := o.dependencies then
@@ -301,6 +303,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       -- Recursive Fields
       items := ← parseItems schemaFromJson j
       properties := ← parseProperties schemaFromJson j
+      additionalProperties := ← parseOptionalField j "additionalProperties" schemaFromJson
       dependencies := ← parseDependencies schemaFromJson j
       additionalItems := ← parseOptionalField j "additionalItems" schemaFromJson
       contains := ← parseOptionalField j "contains" schemaFromJson
