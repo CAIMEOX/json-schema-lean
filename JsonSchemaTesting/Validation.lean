@@ -1,4 +1,7 @@
 import JsonSchema.Validation
+import Lean
+
+/-! # Tests for Schema Validation -/
 
 open Lean
 
