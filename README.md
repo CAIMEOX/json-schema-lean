@@ -4,7 +4,7 @@
 
 An implementation of JSON Schema Draft 7 in Lean (GSoC 2024)
 
-**Current Status**: 89.8% Draft 7 compliance (228 of 254 test cases passing)
+**Current Status**: 94.9% Draft 7 compliance (241 of 254 test cases passing)
 
 ## Build
 
@@ -119,6 +119,7 @@ Project Structure:
   - [x] const
   - [x] minLength
   - [x] maxLength
+  - [x] pattern
   - [x] minimum
   - [x] maximum
   - [x] exclusiveMinimum
@@ -137,10 +138,9 @@ Project Structure:
   - [x] maxProperties
   - [x] minProperties
   - [x] properties
-  - [ ] pattern
+  - [x] patternProperties
   - [x] additionalItems
   - [x] additionalProperties
-  - [ ] patternProperties
   - [x] propertyNames
   - [x] dependencies
   - [x] if / then / else
