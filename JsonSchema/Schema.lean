@@ -63,6 +63,7 @@ mutual
 
     maxLength : Option Nat
     minLength : Option Nat
+    pattern : Option String
 
     maximum : Option Float
     minimum : Option Float
@@ -74,6 +75,7 @@ mutual
 
     required : Option (Array String)
     properties : Option (Array (String × Schema))
+    patternProperties : Option (Array (String × Schema))
     additionalProperties : Option Schema
     maxProperties : Option Nat
     minProperties : Option Nat
@@ -125,6 +127,7 @@ partial def schemaToJson (s : Schema) : Json :=
     if let some e := o.enum then fields := ("enum", Json.arr e) :: fields
     if let some n := o.maxLength then fields := ("maxLength", Json.num n) :: fields
     if let some n := o.minLength then fields := ("minLength", Json.num n) :: fields
+    if let some s := o.pattern then fields := ("pattern", Json.str s) :: fields
     if let some n := o.maximum then fields := ("maximum", Json.fromFloat n) :: fields
     if let some n := o.minimum then fields := ("minimum", Json.fromFloat n) :: fields
     if let some n := o.exclusiveMaximum then fields := ("exclusiveMaximum", Json.fromFloat n) :: fields
@@ -135,6 +138,9 @@ partial def schemaToJson (s : Schema) : Json :=
     if let some props := o.properties then
       let object := props.foldl (init := Std.TreeMap.Raw.empty) fun acc (k, v) => acc.insert k (schemaToJson v)
       fields := ("properties", Json.obj object) :: fields
+    if let some props := o.patternProperties then
+      let object := props.foldl (init := Std.TreeMap.Raw.empty) fun acc (k, v) => acc.insert k (schemaToJson v)
+      fields := ("patternProperties", Json.obj object) :: fields
     if let some s := o.additionalProperties then fields := ("additionalProperties", schemaToJson s) :: fields
     if let some n := o.maxProperties then fields := ("maxProperties", Json.num n) :: fields
     if let some n := o.minProperties then fields := ("minProperties", Json.num n) :: fields
@@ -234,6 +240,16 @@ def parseProperties (parser : Json → Except String Schema) (j : Json) : Except
     Except.ok (some props)
   | Except.error _ => Except.ok none
 
+def parsePatternProperties (parser : Json → Except String Schema) (j : Json) : Except String (Option (Array (String × Schema))) := do
+  match j.getObjVal? "patternProperties" with
+  | Except.ok propJson => do
+    let obj <- propJson.getObj?
+    let props <- obj.foldlM (init := #[]) fun acc key val => do
+      let schema <- parser val
+      Except.ok (acc.push (key, schema))
+    Except.ok (some props)
+  | Except.error _ => Except.ok none
+
 def parseDependencies (parser : Json → Except String Schema) (j : Json) : Except String (Option (Array (String × DependencySchema))) := do
   match j.getObjVal? "dependencies" with
   | Except.ok depJson => do
@@ -291,6 +307,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       /- Ordinary Optional Fields-/
       maxLength := ← parseOptionalField j "maxLength" parseNat
       minLength := ← parseOptionalField j "minLength" parseNat
+      pattern := ← parseOptionalField j "pattern" (fun val => val.getStr?)
       maximum := ← parseOptionalField j "maximum" parseFloat
       minimum := ← parseOptionalField j "minimum" parseFloat
       exclusiveMaximum := ← parseOptionalField j "exclusiveMaximum" parseFloat
@@ -303,6 +320,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       -- Recursive Fields
       items := ← parseItems schemaFromJson j
       properties := ← parseProperties schemaFromJson j
+      patternProperties := ← parsePatternProperties schemaFromJson j
       additionalProperties := ← parseOptionalField j "additionalProperties" schemaFromJson
       dependencies := ← parseDependencies schemaFromJson j
       additionalItems := ← parseOptionalField j "additionalItems" schemaFromJson

@@ -2,6 +2,7 @@ import JsonSchema.Schema
 import JsonSchema.Error
 import JsonSchema.Resolving
 import Lean.Data.Json
+import Regex
 open Lean
 open Json
 open Schema
@@ -47,6 +48,19 @@ def validateMinLength (min_length: Nat) (json : Json) : ValidationError :=
       then fine
       else reportError s!"String is too short, min length is {min_length}, got " s.length
   | _ => fine
+
+def validatePattern (pattern: String) (json : Json) : ValidationError :=
+  match json with
+  | Json.str s =>
+    -- Compile the regex pattern
+    match Regex.build pattern with
+    | .ok regex =>
+      -- Test if the pattern matches the string
+      match regex.captures s with
+      | .some _ => fine  -- Pattern matched
+      | .none => reportError s!"String does not match pattern {pattern}, got " s
+    | .error err => reportError s!"Invalid regex pattern {pattern}: {err}" json
+  | _ => fine  -- pattern only applies to strings
 
 def validateMaximum (maximum: Float) (json : Json) : ValidationError :=
   match json with
@@ -248,17 +262,38 @@ def validateProperties (validator: Schema → Json → ValidationError) (propert
     | .ok propValue => validator propSchema propValue
     | .error _ => fine
 
-def validateAdditionalProperties (validator: Schema → Json → ValidationError) (properties : Option (Array (String × Schema))) (additionalProperties : Schema) (json : Json) : ValidationError :=
+-- Returns validation result and set of property names that matched patterns
+def validatePatternProperties (validator: Schema → Json → ValidationError) (patternProperties : Array (String × Schema)) (json : Json) : Except (Array String) (Array String) := do
+  match json with
+  | Json.obj objMap =>
+    -- First, compile all regex patterns (fail early if any are invalid)
+    let compiledPatterns ← patternProperties.mapM fun (pattern, schema) =>
+      match Regex.build pattern with
+      | .ok regex => .ok (regex, schema)
+      | .error err => .error #[s!"Invalid regex pattern {pattern}: {err} {json.compress}"]
+    -- Track which properties matched any pattern
+    objMap.foldlM (init := #[]) fun x propName propValue =>
+      compiledPatterns.foldlM (init := x) fun _ (regex, patternSchema) =>
+        match regex.captures propName with
+        | .some _ =>
+          validator patternSchema propValue *>
+          pure (x.push propName)
+        | .none => return x
+  | _ => pure #[]  -- patternProperties only applies to objects
+
+def validateAdditionalProperties (validator: Schema → Json → ValidationError) (properties : Option (Array (String × Schema))) (patternMatchedProps : Array String) (additionalProperties : Schema) (json : Json) : ValidationError :=
   match json with
   | Json.obj objMap =>
     -- Get the set of property names defined in the schema
     let definedProps := match properties with
       | some props => props.map Prod.fst
       | none => #[]
-    -- Validate each property that is NOT in the defined properties
+    -- Validate each property that is NOT in defined properties AND NOT matched by patterns
     objMap.foldlM (init := ()) fun _ propName propValue =>
       if definedProps.contains propName then
-        fine  -- This property is defined, skip it
+        fine  -- This property is defined in properties, skip it
+      else if patternMatchedProps.contains propName then
+        fine  -- This property was matched by a pattern, skip it
       else
         -- This is an additional property, validate it against the schema
         validator additionalProperties propValue
@@ -343,6 +378,7 @@ def validateObject (resolver : Resolver) (baseURI : LeanUri.URI)
   maybeCheck schemaObj.const (validateConst json) *>
   maybeCheck schemaObj.maxLength (fun t => validateMaxLength t json) *>
   maybeCheck schemaObj.minLength (fun t => validateMinLength t json) *>
+  maybeCheck schemaObj.pattern (fun t => validatePattern t json) *>
   maybeCheck schemaObj.maximum (fun t => validateMaximum t json) *>
   maybeCheck schemaObj.exclusiveMaximum (fun t => validateExclusiveMaximum t json) *>
   maybeCheck schemaObj.minimum (fun t => validateMinimum t json) *>
@@ -354,8 +390,14 @@ def validateObject (resolver : Resolver) (baseURI : LeanUri.URI)
   maybeCheck schemaObj.minProperties (fun minProperties => validateMinProperties minProperties json) *>
   boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
   maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
-  maybeCheck schemaObj.additionalProperties (fun additionalProperties =>
-    validateAdditionalProperties validator schemaObj.properties additionalProperties json) *>
+  -- Validation of additional properties must exclude pattern matched properties
+  (do
+    let patternMatchedProps ← match schemaObj.patternProperties with
+    | some patternProperties => validatePatternProperties validator patternProperties json
+    | none => pure #[]
+    maybeCheck schemaObj.additionalProperties (fun additionalProperties =>
+      validateAdditionalProperties validator schemaObj.properties patternMatchedProps additionalProperties json)
+  ) *>
   maybeCheck schemaObj.dependencies (fun dependencies => validateDependencies validator dependencies json) *>
   maybeCheck schemaObj.items (fun items => validateItems validator items json) *>
   maybeCheck schemaObj.additionalItems (fun additionalItems =>

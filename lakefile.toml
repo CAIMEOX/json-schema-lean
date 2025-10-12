@@ -17,6 +17,11 @@ name = "lean-uri"
 git = "https://github.com/josephmckinsey/lean-uri"
 rev = "main"
 
+[[require]]
+name = "Regex"
+git = "https://github.com/bergmannjg/regex"
+rev = "main"
+
 [[lean_exe]]
 name = "bowtie"
 root = "Main"
