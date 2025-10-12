@@ -90,6 +90,9 @@ def SchemaObject.foldDefinitions (o : SchemaObject) (f : α → String × Schema
 def SchemaObject.foldProperties (o : SchemaObject) (f : α → String × Schema → α) (init : α) : α :=
   ((o.properties).getD #[]).foldl f init
 
+def SchemaObject.foldPatternProperties (o : SchemaObject) (f : α → String × Schema → α) (init : α) : α :=
+  ((o.patternProperties).getD #[]).foldl f init
+
 def SchemaObject.foldDependencies (o : SchemaObject) (f : α → String × Schema → α) (init : α) : α :=
   let dependencySchemas : Option (Array (String × Schema)) := o.dependencies <&> fun xs =>
     xs.filterMap (fun (name, dependencySchema) =>
@@ -126,6 +129,8 @@ def Schema.foldStackAux (schema : Schema) (pathStack : List String) (baseURI : U
         f x definition (key::"definitions"::pathStack) baseURI
       let init : α := o.foldProperties (init := init) fun x (key, property) =>
         f x property (key::"properties"::pathStack) baseURI
+      let init : α := o.foldPatternProperties (init := init) fun x (key, property) =>
+        f x property (key::"patternProperties"::pathStack) baseURI
       let init : α := o.foldDependencies (init := init) fun x (key, property) =>
         f x property (key::"dependencies"::pathStack) baseURI
       let init : α := o.foldItems (init := init) fun x (item, i) =>

@@ -12,6 +12,7 @@ open LeanUri in
     This function handles special JSON Schema patterns like:
     - /definitions/name - access a definition
     - /properties/name - access a property schema
+    - /patternProperties/pattern - access a pattern property schema
     - /items - access items schema (single or needs index for tuple)
     - /allOf/0 - access array element by index
     - etc.
@@ -36,6 +37,14 @@ partial def navigateWithURI? (schema : Schema) (tokens : List String) (baseURI :
     -- Handle properties/key pattern
     | "properties" :: key :: rest =>
       match o.properties with
+      | some props =>
+        match props.findSome? fun (k, v) => if k == key then some v else none with
+        | some subschema => navigateWithURI? subschema rest newURI
+        | none => none
+      | none => none
+    -- Handle patternProperties/key pattern
+    | "patternProperties" :: key :: rest =>
+      match o.patternProperties with
       | some props =>
         match props.findSome? fun (k, v) => if k == key then some v else none with
         | some subschema => navigateWithURI? subschema rest newURI
