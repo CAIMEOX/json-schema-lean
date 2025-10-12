@@ -76,6 +76,7 @@ mutual
     required : Option (Array String)
     properties : Option (Array (String × Schema))
     patternProperties : Option (Array (String × Schema))
+    propertyNames : Option Schema
     additionalProperties : Option Schema
     maxProperties : Option Nat
     minProperties : Option Nat
@@ -141,6 +142,7 @@ partial def schemaToJson (s : Schema) : Json :=
     if let some props := o.patternProperties then
       let object := props.foldl (init := Std.TreeMap.Raw.empty) fun acc (k, v) => acc.insert k (schemaToJson v)
       fields := ("patternProperties", Json.obj object) :: fields
+    if let some s := o.propertyNames then fields := ("propertyNames", schemaToJson s) :: fields
     if let some s := o.additionalProperties then fields := ("additionalProperties", schemaToJson s) :: fields
     if let some n := o.maxProperties then fields := ("maxProperties", Json.num n) :: fields
     if let some n := o.minProperties then fields := ("minProperties", Json.num n) :: fields
@@ -321,6 +323,7 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
       items := ← parseItems schemaFromJson j
       properties := ← parseProperties schemaFromJson j
       patternProperties := ← parsePatternProperties schemaFromJson j
+      propertyNames := ← parseOptionalField j "propertyNames" schemaFromJson
       additionalProperties := ← parseOptionalField j "additionalProperties" schemaFromJson
       dependencies := ← parseDependencies schemaFromJson j
       additionalItems := ← parseOptionalField j "additionalItems" schemaFromJson

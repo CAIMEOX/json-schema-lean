@@ -131,6 +131,8 @@ def Schema.foldStackAux (schema : Schema) (pathStack : List String) (baseURI : U
         f x property (key::"properties"::pathStack) baseURI
       let init : α := o.foldPatternProperties (init := init) fun x (key, property) =>
         f x property (key::"patternProperties"::pathStack) baseURI
+      let init : α := (o.propertyNames <&>
+        (f init · ("propertyNames"::pathStack) baseURI)).getD init
       let init : α := o.foldDependencies (init := init) fun x (key, property) =>
         f x property (key::"dependencies"::pathStack) baseURI
       let init : α := o.foldItems (init := init) fun x (item, i) =>

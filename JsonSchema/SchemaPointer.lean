@@ -50,6 +50,8 @@ partial def navigateWithURI? (schema : Schema) (tokens : List String) (baseURI :
         | some subschema => navigateWithURI? subschema rest newURI
         | none => none
       | none => none
+    -- Handle propertyNames
+    | "propertyNames" :: rest => o.propertyNames >>= (navigateWithURI? · rest newURI)
     -- Handle dependencies/key pattern (only for schema dependencies)
     | "dependencies" :: key :: rest =>
       match o.dependencies with

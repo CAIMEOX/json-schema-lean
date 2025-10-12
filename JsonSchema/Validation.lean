@@ -262,6 +262,14 @@ def validateProperties (validator: Schema → Json → ValidationError) (propert
     | .ok propValue => validator propSchema propValue
     | .error _ => fine
 
+def validatePropertyNames (validator: Schema → Json → ValidationError) (propertyNamesSchema : Schema) (json : Json) : ValidationError :=
+  match json with
+  | Json.obj objMap =>
+    -- Validate each property name (as a string) against the schema
+    objMap.foldlM (init := ()) fun _ propName _ =>
+      validator propertyNamesSchema (Json.str propName)
+  | _ => fine  -- propertyNames only applies to objects
+
 -- Returns validation result and set of property names that matched patterns
 def validatePatternProperties (validator: Schema → Json → ValidationError) (patternProperties : Array (String × Schema)) (json : Json) : Except (Array String) (Array String) := do
   match json with
@@ -390,6 +398,8 @@ def validateObject (resolver : Resolver) (baseURI : LeanUri.URI)
   maybeCheck schemaObj.minProperties (fun minProperties => validateMinProperties minProperties json) *>
   boolCheck schemaObj.uniqueItems (fun _ => validateUniqueItems json) *>
   maybeCheck schemaObj.properties (fun properties => validateProperties validator properties json) *>
+  maybeCheck schemaObj.propertyNames (fun propertyNamesSchema =>
+    validatePropertyNames validator propertyNamesSchema json) *>
   -- Validation of additional properties must exclude pattern matched properties
   (do
     let patternMatchedProps ← match schemaObj.patternProperties with
