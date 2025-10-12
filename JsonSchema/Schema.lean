@@ -1,8 +1,16 @@
 import Lean.Data.Json
 import LeanUri
 
+def Lean.Json.fromFloat (x : Float) : Json :=
+  match JsonNumber.fromFloat? x with
+  | .inl s => Json.str s
+  | .inr f => Json.num f
+
+namespace JsonSchema
+
 open Lean
 open Json
+
 inductive JsonType where
   | StringType
   | NumberType
@@ -102,10 +110,6 @@ end
 
 open JsonType
 
-def Lean.Json.fromFloat (x : Float) : Json :=
-  match JsonNumber.fromFloat? x with
-  | .inl s => Json.str s
-  | .inr f => Json.num f
 
 def urirefToString (r : LeanUri.URI ⊕ LeanUri.RelativeRef) : String :=
   match r with
@@ -358,3 +362,5 @@ def Schema.getDefinition? (schema : Schema) (key : String) : Option Schema :=
   match schema with
   | Schema.Boolean _ => none
   | Schema.Object o => o.definitions >>= (Std.TreeMap.Raw.get? · key)
+
+end JsonSchema

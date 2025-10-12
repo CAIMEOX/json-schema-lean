@@ -2,6 +2,7 @@ import Harness.Command
 import JsonSchema.Compiler
 import Lean.Data.Json
 open Lean
+open JsonSchema
 
 def runTest (j: Json) : Except String String := do
   let runReq : Except String RunRequest := fromJson? j

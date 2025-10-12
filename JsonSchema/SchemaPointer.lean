@@ -1,7 +1,7 @@
 import JsonSchema.Schema
 import JsonSchema.PointerFragment
 
-namespace Schema
+namespace JsonSchema.Schema
 
 open JsonPointer
 
@@ -130,4 +130,4 @@ def navigateByPointer (schema : Schema) (pointer : String) : Except String Schem
     | some s => Except.ok s
     | none => Except.error s!"Cannot resolve pointer '{pointer}' in schema"
 
-end Schema
+end JsonSchema.Schema

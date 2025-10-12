@@ -67,6 +67,8 @@ only after registering all paths so resolution can occur.
 
 -/
 
+namespace JsonSchema
+
 open Lean
 open LeanUri
 
@@ -308,3 +310,5 @@ def ResolverGraph.dfs (g : ResolverGraph) : Option (List String) := Id.run do
       return getCycleReversed state.parents head tail
 
   return none
+
+end JsonSchema

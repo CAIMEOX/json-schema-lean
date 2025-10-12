@@ -3,6 +3,12 @@ import JsonSchema.Error
 import JsonSchema.Resolving
 import Lean.Data.Json
 import Regex
+
+def Lean.JsonNumber.isInt (n : JsonNumber) : Bool := n.mantissa % (10 ^ n.exponent) == 0
+def Float.isInt (x : Float) := x.round == x && x.isFinite
+
+namespace JsonSchema
+
 open Lean
 open Json
 open Schema
@@ -25,8 +31,6 @@ partial def jsonSchemaEq : Json -> Json -> Bool
       | none    => false
       | some fb => fa == fb
   | _,      _      => false
-
-def Lean.JsonNumber.isInt (n : JsonNumber) : Bool := n.mantissa % (10 ^ n.exponent) == 0
 
 def validateConst (const: Json) (json : Json) : ValidationError :=
   if jsonSchemaEq const json
@@ -93,8 +97,6 @@ def validateMinimum (minimum: Float) (json : Json) : ValidationError :=
       then fine
       else reportError s!"Number is too small, min is {minimum}, got " n.toString
   | _ => fine
-
-def Float.isInt (x : Float) := x.round == x && x.isFinite
 
 def validateMultipleOf (multiple_of: Float) (json : Json) : ValidationError :=
   match json with
@@ -432,3 +434,5 @@ def validateWithResolver (fuel : Nat := 1000) (resolver : Resolver) (rootURI : L
 def validate (schema: Schema) (json : Json) : ValidationError :=
   let resolver := Resolver.addSchema {} schema default
   validateWithResolver 1000 resolver default schema json
+
+end JsonSchema

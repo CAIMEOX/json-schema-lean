@@ -1,4 +1,6 @@
 import Lean.Data.Json
+
+namespace JsonSchema
 open Lean
 
 def ValidationError := Except (Array String) Unit
@@ -8,3 +10,5 @@ def reportError (messgae: String) (json : Json) : ValidationError :=
 
 def fine : ValidationError :=
   Except.ok ()
+
+end JsonSchema

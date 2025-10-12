@@ -104,6 +104,10 @@ def testSchemaJson : String := "{
   \"items\": { \"type\": \"string\" }
 }"
 
+section Schema
+
+open JsonSchema
+
 def testSchema : Schema :=
   match Json.parse testSchemaJson >>= fromJson? with
   | Except.ok s => s
@@ -205,3 +209,5 @@ def testSchema : Schema :=
 /-- info: true -/
 #guard_msgs in
 #eval !(Schema.navigateByPointer testSchema "/definitions/nonexistent").isOk
+
+end Schema

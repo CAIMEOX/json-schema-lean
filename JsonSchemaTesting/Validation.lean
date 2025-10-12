@@ -4,6 +4,7 @@ import Lean
 /-! # Tests for Schema Validation -/
 
 open Lean
+open JsonSchema
 
 def schemaJsonString' : String := include_str "another_schema.json"
 

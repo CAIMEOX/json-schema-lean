@@ -6,6 +6,7 @@ import LeanUri
 
 open Lean
 open LeanUri
+open JsonSchema
 
 def schemaString : String := include_str "example_definition.json"
 
