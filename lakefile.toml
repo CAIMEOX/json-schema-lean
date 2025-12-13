@@ -15,12 +15,12 @@ name = "JsonSchemaTesting"
 [[require]]
 name = "lean-uri"
 git = "https://github.com/josephmckinsey/lean-uri"
-rev = "main"
+rev = "v4.23.0"
 
 [[require]]
 name = "Regex"
 git = "https://github.com/bergmannjg/regex"
-rev = "main"
+rev = "v4.25.0"
 
 [[lean_exe]]
 name = "bowtie"
