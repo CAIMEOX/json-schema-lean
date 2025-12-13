@@ -6,6 +6,15 @@ def Lean.Json.fromFloat (x : Float) : Json :=
   | .inl s => Json.str s
   | .inr f => Json.num f
 
+def parseLenientReference (s : String) : Except String (LeanUri.URI ⊕ LeanUri.RelativeRef) :=
+  match s.splitOn "#" with
+  | [base, fragment] =>
+    let encodedFragment := LeanUri.pctEncode LeanUri.Internal.isQueryOrFragmentChar fragment
+    LeanUri.parseReference (base ++ "#" ++ encodedFragment)
+  | _ =>
+    -- No fragment, parse as-is
+    LeanUri.parseReference s
+
 namespace JsonSchema
 
 open Lean
@@ -303,8 +312,9 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
     Except.ok (Schema.Object {
       id := ← parseOptionalField j "$id" (fun val => val.getStr? >>=
         LeanUri.parseReference)
-      ref := ← parseOptionalField j "$ref" (fun val => val.getStr? >>=
-        LeanUri.parseReference)
+      ref := ← parseOptionalField j "$ref" (fun val =>
+        val.getStr? >>= fun refStr =>
+          parseLenientReference refStr |>.mapError (s!"Failed to parse $ref '{refStr}': {·}"))
       type := ← parseType j
       const := ← parseOptionalField j "const" Except.ok
       enum := ← parseOptionalField j "enum" (fun val => val.getArr?)

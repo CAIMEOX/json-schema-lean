@@ -15,7 +15,7 @@ name = "JsonSchemaTesting"
 [[require]]
 name = "lean-uri"
 git = "https://github.com/josephmckinsey/lean-uri"
-rev = "v4.23.0"
+rev = "v4.24.0-patch1"
 
 [[require]]
 name = "Regex"
