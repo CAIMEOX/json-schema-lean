@@ -1,0 +1,46 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "http://example.com/schemas/circular.json",
+    "title": "Circular allOf example",
+    "$ref": "#/definitions/A",
+    "definitions": {
+        "A": {
+            "allOf": [
+                {
+                    "$ref": "#/definitions/B"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "a": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "a"
+                    ],
+                    "additionalProperties": false
+                }
+            ]
+        },
+        "B": {
+            "allOf": [
+                {
+                    "$ref": "#/definitions/A"
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "b": {
+                            "type": "number"
+                        }
+                    },
+                    "required": [
+                        "b"
+                    ],
+                    "additionalProperties": false
+                }
+            ]
+        }
+    }
+}

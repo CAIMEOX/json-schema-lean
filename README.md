@@ -2,20 +2,47 @@
 
 ## Description
 
-An implementation of JSON Schema in Lean (GSoC 2024)
+An implementation of JSON Schema Draft 7 in Lean (GSoC 2024)
+
+**Current Status**: 94.9% Draft 7 compliance (241 of 254 test cases passing)
 
 ## Build
 
-Build docker image
-
 ```sh
-docker build -f Dockerfile -t localhost/lean-jsonschema .
+lake build
 ```
 
-Run tests
+### Docker Build
+
+Build docker image:
 
 ```sh
-bowtie run --dialect 7 -i localhost/lean-jsonschema:latest
+docker build -f Dockerfile -t localhost/lean-jsonschema:latest .
+# Or with Podman
+podman build -f Dockerfile -t localhost/lean-jsonschema:latest .
+```
+
+## Testing
+
+There are some tests in `lake test`, but most tests rely on `bowtie`:
+
+Install [bowtie](https://docs.bowtie.report/en/stable/).
+
+Run tests:
+
+```sh
+# Run core passing tests
+./test.sh
+
+# Test specific keyword
+bowtie suite -i localhost/lean-jsonschema:latest \
+  https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/const.json \
+  | bowtie summary --show failures
+
+# Run full Draft 7 test suite
+bowtie suite -i localhost/lean-jsonschema:latest \
+  https://github.com/json-schema-org/JSON-Schema-Test-Suite/tree/main/tests/draft7 \
+  | bowtie summary
 ```
 
 ## Design
@@ -31,58 +58,135 @@ For integration of this implementation with **Bowtie**, the project is (currentl
 Project Structure:
 
 ```
-├── Dockerfile
-├── Harness
+├── Dockerfile            # Dockerfile for Bowtie image
+├── Harness/              # Bowtie interface
 │   ├── Command.lean
 │   └── Harness.lean
-├── Harness.lean
-├── JsonSchema
-│   ├── Compiler.lean
-│   ├── Content.lean
-│   ├── Draft.lean
-│   ├── Error.lean
-│   ├── Format.lean
-│   ├── Loader.lean
-│   ├── Resource.lean
-│   ├── Schema.lean
-│   └── Validation.lean
-├── JsonSchema.lean
-├── lakefile.lean
-├── lake-manifest.json
-├── lean-toolchain
-├── Main.lean
+├── JsonSchema/
+│   ├── Compiler.lean     # JSON Schema to Type (TODO)
+│   ├── Error.lean        # Error types
+│   ├── Format.lean       # Format validators (not yet integrated)
+│   ├── Loader.lean       # Remote schema loading (TODO)
+│   ├── PointerFragment.lean  # RFC 6901 JSON Pointer navigation
+│   ├── Resolving.lean    # $ref/$id resolution and loop detection
+│   ├── Schema.lean       # Schema data structures
+│   ├── SchemaPointer.lean # Schema pointer utilities
+│   └── Validation.lean   # Core validation logic
+├── JsonSchemaTesting/    # Compile-time Testing
+├── Main.lean             # Entry point for bowtie
+├── TestRunner.lean       # Minimal lake test location
+├── test.sh               # Test runner script
+├── lakefile.toml
+└── lean-toolchain
 ```
 
-The implementation is divided into the following modules:
+#### Core Modules
 
-#### Container
+**Harness**: Handles interaction between validator and Bowtie test harness
+- Implements IHOP protocol (start, dialect, run, stop commands)
+- Reads JSON commands from stdin, dispatches to validator, returns results to stdout
 
-The Dockerfile contains the commands for building this project in a container.
+**JsonSchema/Schema.lean**: Schema data structure definitions
+- `Schema`: Either `Boolean` or `Object SchemaObject`
+- `SchemaObject`: Contains all JSON Schema keywords
+- JSON parsing and serialization
 
-#### Harness
+**JsonSchema/Validation.lean**: Core validation logic
+- Individual `validate*` functions for each keyword
+- `validateObject`: Orchestrates all validations
+- `validateWithResolver`: Main entry point with fuel-based recursion limiting
 
-The **Harness** module handles the interaction between Core and Bowtie. A function `repl` will read commands from the stdin and then `dispatch` them to the core through `runTest`, returning the result to stdout.
+**JsonSchema/Resolving.lean**: Reference resolution
+- `Resolver`: Registry of schemas by URI
+- Handles `$ref`, `$id`, and `definitions`
+- Loop detection via dependency graph analysis
 
-#### Json Schema (Core)
+**JsonSchema/PointerFragment.lean**: JSON Pointer (RFC 6901)
+- Parses pointer strings like `/definitions/foo`
+- Navigates schema structures for fragment resolution
 
-The core implementation is divided into the following modules:
+## Usage Examples
 
-- **Compiler** : Provides functions to compile raw JSON Schema into Lean Data Types for later validation.
-- **Content** : Content decoder for encoded string.
-- **Draft** : Represent the JSON Schema Draft (Draft 7 is prioritized for now)
-- **Error** : Error type definitions for JSON Schema validation
-- **Format** : Validation functions for specific format like `date-time`, `date`, `time` and etc.
-- **Loader** : Resource loaders that deals with loading schema from file or url
-- **Resource**: Resource manager for schema and data
-- **Schema** : Basic type definitions and utils for JSON Schema
-- **Validation**: Functions to validate JSON data against a schema
+### Minimal Example
+
+```lean
+import JsonSchema.Validation
+import Lean
+
+open Lean
+open JsonSchema
+
+-- Create a simple schema from JSON
+def minimalSchema : Schema :=
+  (fromJson? (Json.mkObj [("type", Json.str "string")])).toOption.get!
+
+-- Validate data against the schema
+#eval validate minimalSchema (Json.str "hello")  -- Except.ok ()
+#eval validate minimalSchema (Json.num 42)       -- Error: wrong type
+```
+
+### Example with Resolver and $ref
+
+```lean
+import JsonSchema.Validation
+import JsonSchema.Resolving
+import Lean
+
+open Lean
+open JsonSchema
+
+-- Schema with definitions and references
+def schemaWithRefsJson : Json := Json.mkObj [
+  ("$id", Json.str "https://example.com/person.json"),
+  ("definitions", Json.mkObj [
+    ("address", Json.mkObj [
+      ("type", Json.str "object"),
+      ("properties", Json.mkObj [
+        ("street", Json.mkObj [("type", Json.str "string")]),
+        ("city", Json.mkObj [("type", Json.str "string")])
+      ]),
+      ("required", Json.arr #[Json.str "street", Json.str "city"])
+    ])
+  ]),
+  ("type", Json.str "object"),
+  ("properties", Json.mkObj [
+    ("name", Json.mkObj [("type", Json.str "string")]),
+    ("home", Json.mkObj [("$ref", Json.str "#/definitions/address")]),
+    ("work", Json.mkObj [("$ref", Json.str "#/definitions/address")])
+  ]),
+  ("required", Json.arr #[Json.str "name"])
+]
+
+def schemaWithRefs : Schema :=
+  (fromJson? schemaWithRefsJson).toOption.get!
+
+-- Create a resolver and register the schema
+def resolver : Resolver :=
+  Resolver.addSchema {} schemaWithRefs (LeanUri.URI.encode "https" "example.com" "/person.json")
+
+-- Valid person with addresses
+def validPersonData : Json := Json.mkObj [
+  ("name", Json.str "Alice"),
+  ("home", Json.mkObj [
+    ("street", Json.str "123 Main St"),
+    ("city", Json.str "Springfield")
+  ]),
+  ("work", Json.mkObj [
+    ("street", Json.str "456 Office Blvd"),
+    ("city", Json.str "Shelbyville")
+  ])
+]
+
+-- Validate using the resolver
+#eval validateWithResolver resolver default schemaWithRefs validPersonData
+-- Success: Except.ok ()
+```
+
+See [JsonSchemaTesting/Examples.lean](JsonSchemaTesting/Examples.lean) for more examples.
 
 ## TODO List
 
-- [ ] Containerize (Docker Image)
-  - [x] Build Docker Image for lean compiler
-  - [x] Build Docker Image for lean-jsonschema implementation
-  - [ ] Minimize Docker Image
+- [x] Containerize (Docker Image)
 - [x] Separated Json Schema validator and Harness module
 - [x] Integrate with **Bowtie**
   - [x] Basic (run / start / dialect / stop) command dispatcher
@@ -94,6 +198,7 @@ The core implementation is divided into the following modules:
   - [x] const
   - [x] minLength
   - [x] maxLength
+  - [x] pattern
   - [x] minimum
   - [x] maximum
   - [x] exclusiveMinimum
@@ -101,10 +206,32 @@ The core implementation is divided into the following modules:
   - [x] required
   - [x] uniqueItems
   - [x] multipleOf
-  - [ ] allOf
-  - [ ] anyOf
-  - [ ] oneOf
-  - [ ] properties
-  - [ ] additionalProperties
-  - [ ] not
-  - [ ] if / then / else
+  - [x] allOf
+  - [x] anyOf
+  - [x] oneOf
+  - [x] not
+  - [x] items
+  - [x] contains
+  - [x] maxItems
+  - [x] minItems
+  - [x] maxProperties
+  - [x] minProperties
+  - [x] properties
+  - [x] patternProperties
+  - [x] additionalItems
+  - [x] additionalProperties
+  - [x] propertyNames
+  - [x] dependencies
+  - [x] if / then / else
+  - [x] $ref / $id / definitions
+- [ ] Load schema (and refs) from a file with file:// URI resolution
+- [ ] Remote reference loading (i.e. http, https should load either beforehand or "on-demand")
+- [ ] Draft 2019-09 support
+- [ ] Draft 2020-12 support
+- [ ] Docs
+
+### Extra goodies
+
+- [ ] Proofs of termination/correctness
+- [ ] Compile JSON Schema to Lean types like datamodel-code-generator
+- [ ] Create JSON Schema from Lean types

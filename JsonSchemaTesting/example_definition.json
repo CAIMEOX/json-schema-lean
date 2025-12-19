@@ -1,0 +1,58 @@
+{
+    "$id": "http://example.com/root.json",
+    "definitions": {
+        "address": {
+            "$id": "#address",
+            "type": "object",
+            "properties": {
+                "street": {
+                    "type": "string"
+                },
+                "city": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "street",
+                "city"
+            ]
+        },
+        "person": {
+            "$id": "#person",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "address": {
+                    "$ref": "#address"
+                }
+            },
+            "required": [
+                "name",
+                "address"
+            ]
+        }
+    },
+    "type": "object",
+    "properties": {
+        "owner": {
+            "$ref": "#person"
+        },
+        "tenant": {
+            "$ref": "#person"
+        },
+        "meta": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "refToAddress": {
+                    "$ref": "#address"
+                }
+            }
+        }
+    }
+}
